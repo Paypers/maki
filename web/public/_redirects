@@ -1,0 +1,4 @@
+# Single-page app: every path that is not a real file serves the shell.
+# Cloudflare Pages checks the filesystem first, so /history.json, /fonts/*
+# and the hashed assets are served as themselves, not rewritten.
+/*  /index.html  200

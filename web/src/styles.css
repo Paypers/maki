@@ -1,0 +1,738 @@
+/* ===========================================================================
+   "Dark shift" -- dense, data-first, dark by default.
+
+   Mobile-first, one-handed, standing up, in a dim kiosk at 5am before the
+   store lights come up. Nothing interactive below 44px.
+
+     1. fonts           self-hosted; the app is offline-first
+     2. tokens          dark is the base; light is the daylight variant
+     3. base            page frame, headers, eyebrows
+     4. surfaces        cards, banners, disclosure
+     5. controls        buttons, fields, segmented, steppers
+     6. data            rows, column headers, sparklines, stats, charts
+     7. navigation      tab bar, sticky footer
+     8. recipe builder
+
+   Amber is the one accent and it does three jobs: primary action, "the rule
+   disagrees with you", and "this sold out". Those are all the same message
+   -- look here -- so they share a colour. Red is reserved for actually wrong
+   (more waste than was made); green for confirmed/saved. Nothing else is
+   coloured.
+
+   Two ambers. As a FILL under dark text the bright one works on any ground.
+   As TEXT or a thin STROKE on a light ground it fails contrast (1.9:1), so
+   the light theme carries a second, darker amber for ink. On dark they are
+   the same value. Series/status hues were checked against both card surfaces
+   with the palette validator; change a surface and re-run it.
+   =========================================================================== */
+
+/* ---- 1. fonts --------------------------------------------------------- */
+
+/* Latin subsets only, self-hosted. Both faces are OFL-licensed variable
+   fonts; the pair is 46 kB and is cached by the service worker with the rest
+   of the shell, so the app opens with its own type and no network. */
+@font-face {
+  font-family: "Space Grotesk";
+  src: url("/fonts/space-grotesk-latin.woff2") format("woff2");
+  font-weight: 300 700; font-style: normal; font-display: swap;
+}
+@font-face {
+  font-family: "Manrope";
+  src: url("/fonts/manrope-latin.woff2") format("woff2");
+  font-weight: 200 800; font-style: normal; font-display: swap;
+}
+
+/* ---- 2. tokens -------------------------------------------------------- */
+
+:root {
+  color-scheme: dark;
+
+  --bg: #0f0f0e;
+  --surface-1: #1a1a18;   /* cards; the chart surface the palette was validated on */
+  --surface-2: #242422;   /* recessed: steppers, tracks, wells */
+  --surface-3: #2e2e2c;   /* raised: the selected segment, pressed fills */
+  --line: #2a2a27;
+  --line-soft: #1f1f1d;
+
+  --text-primary: #f2efe8;
+  --text-secondary: #9c978c;   /* readable secondary: labels, hints */
+  --text-muted: #9c978c;       /* alias, kept for older markup */
+  --text-dim: #5a5852;         /* decorative only: dashes, chevrons, disabled */
+
+  --accent: #f2a93b;           /* fill: buttons, bars, the active tab */
+  --accent-ink: #f2a93b;       /* text and strokes; darker on light */
+  --on-accent: #0f0f0e;        /* text on an amber fill */
+  --accent-soft: rgba(242, 169, 59, 0.14);
+  --series-1: #f2a93b;
+  --good: #4dbb6a;
+  --critical: #e66767;
+  --warning: #f2a93b;
+  --spark-dim: #3d3b36;        /* the recessive part of a sparkline */
+
+  --font-display: "Space Grotesk", "Manrope", system-ui, sans-serif;
+  --font-body: "Manrope", system-ui, -apple-system, "Segoe UI", sans-serif;
+
+  --t-hero: 46px;
+  --t-title: 30px;
+  --t-head: 16px;
+  --t-body: 14px;
+  --t-sm: 12.5px;
+  --t-xs: 10.5px;
+  --t-eyebrow: 12px;
+
+  --s1: 4px; --s2: 8px; --s3: 12px; --s4: 16px; --s5: 20px;
+  --s6: 24px; --s8: 32px;
+
+  --r-sm: 6px; --r-md: 8px; --r-lg: 12px; --r-full: 999px;
+  --tap: 44px;
+  --card-border: var(--line);
+}
+
+/* Daylight. Same language, light ground. */
+@media (prefers-color-scheme: light) {
+  :root:where(:not([data-theme="dark"])) {
+    color-scheme: light;
+    --bg: #f4f2ec;
+    --surface-1: #ffffff;
+    --surface-2: #ebe9e2;
+    --surface-3: #dcd9d0;
+    --line: #dcd9d0;
+    --line-soft: #e8e5dd;
+    --text-primary: #14130f;
+    --text-secondary: #5f5b53;
+    --text-muted: #5f5b53;
+    --text-dim: #a39f95;
+    --accent: #f2a93b;
+    --accent-ink: #9a5c06;
+    --on-accent: #14130f;
+    --accent-soft: rgba(154, 92, 6, 0.10);
+    --series-1: #9a5c06;
+    --good: #2e7d4f;
+    --critical: #d03b3b;
+    --warning: #9a5c06;
+    --spark-dim: #c9c5bb;
+  }
+}
+:root[data-theme="light"] {
+  color-scheme: light;
+  --bg: #f4f2ec;
+  --surface-1: #ffffff;
+  --surface-2: #ebe9e2;
+  --surface-3: #dcd9d0;
+  --line: #dcd9d0;
+  --line-soft: #e8e5dd;
+  --text-primary: #14130f;
+  --text-secondary: #5f5b53;
+  --text-muted: #5f5b53;
+  --text-dim: #a39f95;
+  --accent: #f2a93b;
+  --accent-ink: #9a5c06;
+  --on-accent: #14130f;
+  --accent-soft: rgba(154, 92, 6, 0.10);
+  --series-1: #9a5c06;
+  --good: #2e7d4f;
+  --critical: #d03b3b;
+  --warning: #9a5c06;
+  --spark-dim: #c9c5bb;
+}
+
+/* ---- 3. base ---------------------------------------------------------- */
+
+* { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+
+body {
+  margin: 0;
+  background: var(--bg);
+  color: var(--text-primary);
+  font: var(--t-body)/1.4 var(--font-body);
+  -webkit-font-smoothing: antialiased;
+  padding-bottom: env(safe-area-inset-bottom);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  * { animation-duration: 0.01ms !important; transition-duration: 0.01ms !important; }
+}
+
+.app { max-width: 560px; margin: 0 auto; padding: 0 var(--s5) 96px; }
+
+/* Numbers everywhere are the display face, tabular. A quantity in a column
+   next to another quantity must line up, or the column cannot be scanned. */
+.num, .value, .delta, .stepper input, .cval, table.grid td.num {
+  font-family: var(--font-display); font-variant-numeric: tabular-nums;
+}
+
+/* The eyebrow: a small tracked label that says what a thing is, so the big
+   line under it can say what it says without a colon. Used above every screen
+   title and every card. */
+.eyebrow {
+  font-family: var(--font-display); font-size: var(--t-eyebrow); font-weight: 500;
+  letter-spacing: 0.16em; text-transform: uppercase; color: var(--text-secondary);
+  line-height: 1.2;
+}
+.eyebrow.accent { color: var(--accent-ink); }
+
+header.bar {
+  position: sticky; top: 0; z-index: 10;
+  display: flex; align-items: center; gap: var(--s3);
+  padding: var(--s6) var(--s1) var(--s3);
+  background: color-mix(in srgb, var(--bg) 90%, transparent);
+  backdrop-filter: saturate(1.4) blur(12px);
+  -webkit-backdrop-filter: saturate(1.4) blur(12px);
+}
+header.bar h1 {
+  display: flex; flex-direction: column-reverse; gap: var(--s1); flex: 1; min-width: 0;
+  margin: 0; font-family: var(--font-display); font-size: var(--t-title);
+  font-weight: 700; letter-spacing: -0.03em; line-height: 1;
+}
+/* The subtitle renders ABOVE the title as its eyebrow. In the markup it stays
+   after the title so screen readers announce the screen name first. */
+header.bar .sub {
+  font-family: var(--font-display); font-size: var(--t-eyebrow); font-weight: 500;
+  letter-spacing: 0.16em; text-transform: uppercase; color: var(--text-secondary);
+  line-height: 1.2;
+}
+/* The back button is a 44px square on the card surface. Ordered last in the
+   markup on screens that have one, so it sits at the right edge under the
+   thumb. */
+header.bar > button.ghost {
+  width: 44px; min-height: 44px; height: 44px; padding: 0; flex: none;
+  order: 2; border-radius: var(--r-md); display: grid; place-items: center;
+  background: var(--surface-1); border: 1px solid var(--line);
+  color: var(--text-primary);
+}
+header.bar .pill { order: 2; align-self: flex-end; }
+
+h2 {
+  font-family: var(--font-display); font-size: var(--t-head); margin: 0;
+  font-weight: 600; letter-spacing: -0.01em;
+}
+
+/* ---- 4. surfaces ------------------------------------------------------ */
+
+.card {
+  background: var(--surface-1);
+  border: 1px solid var(--card-border);
+  border-radius: var(--r-lg);
+  padding: var(--s5);
+  margin: var(--s3) 0;
+}
+.card > h2 + p.hint { margin-top: var(--s1); }
+.card p.hint {
+  margin: 0 0 var(--s3); font-size: var(--t-sm); color: var(--text-secondary);
+  line-height: 1.5;
+}
+.card p.hint:last-child { margin-bottom: 0; }
+.card .eyebrow + h2 { margin-top: var(--s3); }
+
+/* The one card on a screen that is the job. */
+.card.focal { padding: var(--s5); }
+.card.focal > h2 { font-size: 24px; letter-spacing: -0.02em; line-height: 1.15; }
+
+details.card > summary,
+details.banner > summary {
+  cursor: pointer; font-weight: 600; list-style: none;
+  display: flex; align-items: center; gap: var(--s2);
+  min-height: 32px; color: var(--text-primary);
+  font-family: var(--font-display); font-size: var(--t-sm);
+}
+details.card > summary::-webkit-details-marker,
+details.banner > summary::-webkit-details-marker { display: none; }
+details.card > summary::after,
+details.banner > summary::after {
+  content: ""; margin-left: auto; width: 8px; height: 8px; flex: none;
+  border-right: 1.75px solid var(--text-secondary);
+  border-bottom: 1.75px solid var(--text-secondary);
+  transform: rotate(45deg) translateY(-2px); transition: transform .15s ease;
+}
+details[open].card > summary::after,
+details[open].banner > summary::after { transform: rotate(-135deg) translateY(2px); }
+
+/* Banners are quiet by default -- surface, line, secondary ink. The icon
+   carries the tone. The accent stripe of the old design is gone: a coloured
+   left border on a rounded box is the single most recognisable "an AI made
+   this" tell, and it was on every screen. */
+.banner {
+  border-radius: var(--r-md); padding: var(--s3);
+  font-size: var(--t-sm); line-height: 1.45;
+  background: var(--surface-1); border: 1px solid var(--line);
+  color: var(--text-secondary);
+  display: flex; gap: var(--s3); align-items: flex-start;
+  margin: var(--s3) 0;
+}
+.banner .ico { flex: none; margin-top: 1px; color: var(--accent-ink); }
+.banner.warn .ico { color: var(--critical); }
+.banner.warn { color: var(--text-primary); }
+.banner.as-details { display: block; }
+.banner.as-details > p { margin: var(--s2) 0 0; }
+
+/* ---- 5. controls ------------------------------------------------------ */
+
+button {
+  font: inherit; font-family: var(--font-display); font-weight: 600;
+  border-radius: var(--r-md); border: 1px solid var(--line);
+  background: var(--surface-1); color: var(--text-primary);
+  min-height: var(--tap); padding: 0 var(--s4); cursor: pointer;
+  display: inline-flex; align-items: center; justify-content: center; gap: var(--s2);
+  letter-spacing: -0.01em;
+  transition: background .12s ease, border-color .12s ease, opacity .12s ease;
+}
+button:active { background: var(--surface-2); }
+button:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+
+button.primary {
+  background: var(--accent); border-color: transparent; color: var(--on-accent);
+  font-weight: 700; width: 100%; min-height: 52px; font-size: 16px;
+}
+button.primary:active { background: color-mix(in srgb, var(--accent) 86%, #000); }
+button.ghost { background: transparent; }
+button.ghost:active { background: var(--surface-2); }
+button:disabled { opacity: 0.4; cursor: not-allowed; }
+button.primary:disabled {
+  /* A disabled primary is not a faded amber button -- it says what is missing
+     in the label and sits on the recessed surface until it can be pressed. */
+  opacity: 1; background: var(--surface-2); color: var(--text-secondary);
+}
+
+button.link {
+  border: 0; background: none; color: var(--accent-ink); font-weight: 600;
+  min-height: 40px; padding: var(--s1) 0; font-size: var(--t-sm);
+}
+button.link:active { text-decoration: underline; background: none; }
+button.small { min-height: 36px; font-size: var(--t-sm); padding: 0 var(--s3);
+               border-radius: var(--r-sm); }
+button.small.wants {
+  background: var(--accent-soft); border-color: transparent; color: var(--accent-ink);
+}
+.addrow {
+  width: 100%; border-style: dashed; border-color: var(--accent-ink);
+  color: var(--accent-ink); background: transparent; margin: var(--s3) 0;
+}
+.addrow:active { background: var(--accent-soft); }
+
+.actions { display: flex; gap: var(--s2); margin-top: var(--s3); }
+.actions button { flex: 1; }
+
+/* Segmented control: recessed track, raised active segment. */
+.tabs {
+  display: flex; gap: 2px; margin: var(--s3) 0;
+  background: var(--surface-1); border: 1px solid var(--line);
+  border-radius: var(--r-md); padding: 3px;
+}
+.tabs button {
+  flex: 1; min-height: 36px; font-size: var(--t-sm); padding: 0 var(--s2);
+  border: 0; background: transparent; color: var(--text-secondary);
+  border-radius: calc(var(--r-md) - 3px); font-weight: 600;
+}
+.tabs button[aria-pressed="true"] { background: var(--surface-3); color: var(--text-primary); }
+
+.field { display: block; margin: var(--s3) 0; }
+.field > span {
+  display: block; font-family: var(--font-display); font-size: var(--t-xs);
+  font-weight: 500; letter-spacing: 0.12em; text-transform: uppercase;
+  color: var(--text-secondary); margin-bottom: var(--s2);
+}
+.field input, .field select, .field textarea {
+  width: 100%; min-height: var(--tap); font: inherit; padding: 0 var(--s3);
+  border-radius: var(--r-md); border: 1px solid var(--line);
+  background: var(--surface-2); color: var(--text-primary);
+  transition: border-color .12s ease, box-shadow .12s ease;
+}
+.field input:focus, .field select:focus, .field textarea:focus {
+  outline: none; border-color: var(--accent); box-shadow: 0 0 0 3px var(--accent-soft);
+}
+.field textarea { padding: var(--s3); min-height: 88px; }
+
+/* A search field: icon inside, no label chrome. */
+.search {
+  display: flex; align-items: center; gap: var(--s2); height: var(--tap);
+  padding: 0 var(--s3); background: var(--surface-1); border: 1px solid var(--line);
+  border-radius: var(--r-md); color: var(--text-secondary); margin: var(--s3) 0;
+}
+.search input {
+  flex: 1; min-width: 0; border: 0; background: transparent; color: var(--text-primary);
+  font: inherit; outline: none;
+}
+.search input::placeholder { color: var(--text-secondary); }
+
+.check {
+  display: flex; gap: var(--s3); align-items: flex-start; font-size: var(--t-body);
+  padding: var(--s2) 0; line-height: 1.4;
+}
+.check input { width: 22px; height: 22px; flex: none; margin-top: 1px;
+               accent-color: var(--accent); }
+
+.pill {
+  display: inline-flex; align-items: center; gap: 6px;
+  font-family: var(--font-display); font-size: var(--t-xs); font-weight: 500;
+  letter-spacing: 0.08em; text-transform: uppercase; color: var(--text-secondary);
+  white-space: nowrap; padding: var(--s1) 0;
+}
+.pill::before {
+  content: ""; width: 6px; height: 6px; border-radius: var(--r-full);
+  background: var(--good); flex: none;
+}
+.pill.offline::before { background: var(--text-dim); }
+.pill.pending::before { background: var(--accent); }
+.pill.late { color: var(--accent-ink); }
+.pill.late::before { background: var(--accent); }
+
+/* ---- 6. data ---------------------------------------------------------- */
+
+/* Column headers over a list. The list is a table with the chrome removed;
+   the headers are what let a column be read as a column. */
+.cols {
+  display: grid; align-items: end; column-gap: var(--s2);
+  padding: var(--s2) var(--s1) 6px; border-bottom: 1px solid var(--line);
+  font-family: var(--font-display); font-size: var(--t-xs); font-weight: 500;
+  letter-spacing: 0.12em; text-transform: uppercase; color: var(--text-secondary);
+}
+.cols > .r { text-align: right; }
+.cols > .c { text-align: center; }
+
+.row {
+  /* minmax(0,1fr) is load-bearing: a plain 1fr refuses to shrink below its
+     content, so a long item name pushed the controls onto a second line at
+     390px. */
+  display: grid; grid-template-columns: minmax(0, 1fr) auto auto auto;
+  align-items: center; column-gap: var(--s2); row-gap: 2px;
+  padding: var(--s2) var(--s1);
+  border-bottom: 1px solid var(--line-soft);
+}
+.row:last-child { border-bottom: 0; }
+.row .name { font-size: 15px; font-weight: 600; min-width: 0;
+             overflow-wrap: anywhere; line-height: 1.25; }
+/* Rows without a sparkline slot collapse that column. */
+.row.no-spark { grid-template-columns: minmax(0, 1fr) auto auto; }
+
+/* The reason line spans the row. One line, ellipsised: forty rows of wrapped
+   prose is what made this screen fifteen phone-screens tall once. */
+.row .why {
+  grid-column: 1 / -1; display: flex; align-items: center; gap: 5px;
+  color: var(--text-secondary); font-size: var(--t-sm);
+  white-space: nowrap; overflow: hidden; font-variant-numeric: tabular-nums;
+}
+.row .why > span { overflow: hidden; text-overflow: ellipsis; }
+.row .why .ico { flex: none; color: var(--accent-ink); }
+/* A caveat -- "sold out, this is a floor" -- is the interesting case, not
+   fine print. It wears the accent. */
+.row .why.caveat { color: var(--accent-ink); font-weight: 600; }
+
+/* Sparkline: ten days, recessive stroke; the accent when the story is that
+   the line is flat against the ceiling (sold out). */
+.spark { display: block; color: var(--spark-dim); }
+.spark.hot { color: var(--accent-ink); }
+
+/* One stepper: recessed well, no border, number in the display face. */
+.stepper {
+  display: grid; grid-template-columns: 44px 44px 44px; align-items: center;
+  background: var(--surface-2); border-radius: var(--r-md); overflow: hidden;
+  height: 44px; box-shadow: inset 0 0 0 1px transparent;
+  transition: box-shadow .12s ease;
+}
+.stepper .step {
+  width: 44px; height: 44px; min-height: 44px; padding: 0; border: 0;
+  border-radius: 0; background: transparent; color: var(--text-secondary);
+  display: grid; place-items: center;
+}
+.stepper .step:active { background: var(--surface-3); }
+.stepper .step:disabled { opacity: 0.3; }
+.stepper input[type="number"] {
+  width: 44px; height: 44px; text-align: center; font: inherit; padding: 0;
+  font-family: var(--font-display); font-weight: 700; font-size: 20px;
+  font-variant-numeric: tabular-nums;
+  border: 0; background: transparent; color: var(--text-primary);
+  -moz-appearance: textfield; appearance: textfield;
+}
+.stepper input[type="number"]::-webkit-outer-spin-button,
+.stepper input[type="number"]::-webkit-inner-spin-button {
+  -webkit-appearance: none; margin: 0;
+}
+.stepper input:focus { outline: none; box-shadow: inset 0 -2px 0 var(--accent); }
+/* Touched = you have looked at this one. On the leftovers count that is the
+   difference between an observation and a guess. */
+.stepper.touched { box-shadow: inset 0 0 0 1px var(--accent); }
+.stepper.touched input { color: var(--accent-ink); }
+/* Untouched on a screen where blank means "not counted": an em dash, dim. */
+.stepper.blank input { color: transparent; }
+.stepper.blank { position: relative; }
+.stepper.blank::after {
+  content: "—"; position: absolute; left: 44px; width: 44px; top: 0; height: 44px;
+  display: grid; place-items: center; pointer-events: none;
+  font-family: var(--font-display); font-size: 18px; color: var(--text-dim);
+}
+
+.delta {
+  font-family: var(--font-display); font-variant-numeric: tabular-nums;
+  font-size: 13px; font-weight: 600; min-width: 30px; text-align: right;
+}
+/* On the production sheet the delta only means "the rule differs from you".
+   That is the accent, and the sign carries the direction. Where up genuinely
+   means worse (waste review) it wears red; better wears green. */
+.delta.up, .delta.down { color: var(--accent-ink); }
+.delta.none { color: var(--text-dim); }
+.chart .delta.up, .stat .delta.up { color: var(--critical); }
+.chart .delta.down, .stat .delta.down { color: var(--good); }
+
+/* Stat tiles. Label above, number below, no box. */
+.stats { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: var(--s3); }
+.stat { min-width: 0; }
+.stat .label {
+  font-size: var(--t-sm); color: var(--text-secondary); font-weight: 500;
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+.stat .value {
+  font-family: var(--font-display); font-size: 40px; font-weight: 700;
+  letter-spacing: -0.04em; line-height: 1; font-variant-numeric: tabular-nums;
+}
+.stat.accent .value { color: var(--accent-ink); }
+/* One hero per view, the number the screen is about. */
+.stats:has(.stat.hero) { grid-template-columns: minmax(0, 1.4fr) minmax(0, 1fr); }
+.stat.hero .value { font-size: var(--t-hero); }
+.stat .label + .value { margin-top: var(--s1); }
+/* Boxed variant for the recipe screen, where the three tiles are the
+   result of what is being edited below them. */
+.stats.boxed .stat {
+  background: var(--surface-1); border: 1px solid var(--line);
+  border-radius: 10px; padding: var(--s3) 14px;
+}
+.stats.boxed .stat .label {
+  font-family: var(--font-display); font-size: var(--t-xs); letter-spacing: 0.12em;
+  text-transform: uppercase;
+}
+.stats.boxed .stat .value { font-size: 22px; letter-spacing: -0.03em; }
+.stats.boxed .stat.accent { border-color: var(--accent); }
+.stats.boxed .stat.accent .label { color: var(--accent-ink); }
+
+/* ---- charts ----
+   Single-series magnitude bars in the accent. Square at the baseline, rounded
+   at the data end. Values direct-labelled. No legend: the heading names it. */
+.chart { margin-top: var(--s2); display: flex; flex-direction: column; gap: 10px; }
+.chart .crow { display: grid; grid-template-columns: minmax(0, 1fr) auto;
+               column-gap: var(--s3); row-gap: 5px; align-items: baseline; }
+.chart .clabel { display: contents; }
+.chart .cname { font-size: 13.5px; font-weight: 600; overflow: hidden;
+                text-overflow: ellipsis; white-space: nowrap; }
+.chart .cval { font-size: var(--t-sm); color: var(--text-secondary); flex: none; }
+.chart .cval strong { color: var(--text-primary); font-weight: 600; }
+.chart .track {
+  grid-column: 1 / -1; position: relative; height: 8px; background: var(--surface-2);
+  border-radius: 0 4px 4px 0; overflow: visible;
+}
+.chart .fill { height: 100%; background: var(--series-1); border-radius: 0 4px 4px 0;
+               min-width: 2px; }
+.chart .ref {
+  position: absolute; top: -4px; bottom: -4px; width: 2px;
+  background: var(--text-secondary); border-radius: 1px;
+  box-shadow: 0 0 0 2px var(--surface-1);
+}
+.chart .more { grid-column: 1 / -1; }
+
+/* A trend line under a hero figure. */
+.trend { display: block; width: 100%; height: 40px; }
+.trend .line { stroke: var(--spark-dim); }
+.trend .avg { stroke: var(--accent-ink); }
+.trend .dot { fill: var(--accent); stroke: var(--surface-1); }
+
+/* Chips: a compact list of named things with a figure each. */
+.chips { display: flex; flex-wrap: wrap; gap: 6px; }
+.chips > span {
+  font-family: var(--font-display); font-size: var(--t-sm); font-weight: 600;
+  color: var(--text-primary); padding: 6px 10px; background: var(--surface-2);
+  border-radius: var(--r-sm); font-variant-numeric: tabular-nums;
+}
+.chips > span em { font-style: normal; color: var(--accent-ink); }
+
+table.grid { width: 100%; border-collapse: collapse; font-size: var(--t-sm); }
+table.grid th, table.grid td {
+  text-align: right; padding: var(--s2) var(--s1);
+  border-bottom: 1px solid var(--line-soft);
+}
+table.grid th {
+  font-family: var(--font-display); font-size: var(--t-xs); font-weight: 500;
+  letter-spacing: 0.1em; text-transform: uppercase; color: var(--text-secondary);
+  position: sticky; top: 0; background: var(--surface-1);
+}
+table.grid th:first-child, table.grid td:first-child { text-align: left; }
+table.grid tr:last-child td { border-bottom: 0; }
+.scroll-x { overflow-x: auto; -webkit-overflow-scrolling: touch; }
+
+/* ---- task list ---- */
+.tasklist { display: grid; gap: var(--s2); }
+.task {
+  display: flex; align-items: center; gap: var(--s3); width: 100%;
+  text-align: left; padding: var(--s3); min-height: 60px;
+  background: var(--surface-2); border: 0; border-radius: var(--r-md);
+  justify-content: flex-start; font-family: var(--font-body); font-weight: 500;
+}
+.task:active { background: var(--surface-3); }
+.task .ico { flex: none; color: var(--text-secondary); }
+.task .who { flex: 1; min-width: 0; }
+.task .who strong { display: block; font-size: 15px; font-weight: 600; }
+.task .who span { font-size: var(--t-sm); color: var(--text-secondary); }
+.task .chev { color: var(--text-dim); flex: none; }
+
+/* ---- item rows ---- */
+.row.itemrow { grid-template-columns: minmax(0, 1fr) 62px 56px 24px; padding: 6px var(--s1);
+               min-height: 56px; }
+.namebtn {
+  border: 0; background: none; text-align: left; padding: var(--s1) 0;
+  min-height: 44px; color: var(--text-primary); width: 100%;
+  display: block; font-family: var(--font-body); font-weight: 500; letter-spacing: 0;
+}
+.namebtn strong { display: block; font-size: 15px; font-weight: 600;
+                  overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.namebtn small {
+  display: block; color: var(--text-secondary); font-size: 11.5px;
+  font-family: var(--font-display); font-variant-numeric: tabular-nums; margin-top: 1px;
+}
+.namebtn small.wants { color: var(--accent-ink); font-weight: 600; }
+.itemrow .price { text-align: right; font-family: var(--font-display);
+                  font-size: 14px; font-weight: 500; font-variant-numeric: tabular-nums; }
+.itemrow .margin { text-align: right; font-family: var(--font-display);
+                   font-size: 14px; font-weight: 700; font-variant-numeric: tabular-nums;
+                   color: var(--accent-ink); }
+.itemrow .margin.none { color: var(--text-dim); font-weight: 500; }
+.itemrow .chev { color: var(--text-dim); display: grid; place-items: center; }
+.itemrow > a { display: contents; color: inherit; text-decoration: none; }
+
+/* ---- 7. navigation ---------------------------------------------------- */
+
+.footer {
+  position: fixed; left: 0; right: 0; bottom: 0; z-index: 15;
+  background: color-mix(in srgb, var(--bg) 94%, transparent);
+  backdrop-filter: blur(12px); -webkit-backdrop-filter: blur(12px);
+  box-shadow: 0 -24px 24px -8px var(--bg);
+  padding: var(--s3) var(--s5) calc(14px + env(safe-area-inset-bottom));
+}
+.footer .inner { max-width: 560px; margin: 0 auto; display: flex; align-items: center;
+                 gap: var(--s3); }
+.footer .inner > button.primary { flex: 1; width: auto; }
+/* The running total beside the confirm button. */
+.footer .tally { display: flex; flex-direction: column; flex: none; }
+.footer .tally .value { font-family: var(--font-display); font-size: 28px; font-weight: 700;
+                        letter-spacing: -0.03em; line-height: 1; font-variant-numeric: tabular-nums; }
+.footer .tally .value span { color: var(--text-dim); font-weight: 500; }
+.footer .tally .label { font-family: var(--font-display); font-size: 11px; font-weight: 500;
+                        letter-spacing: 0.06em; text-transform: uppercase;
+                        color: var(--text-secondary); margin-top: 2px; }
+
+.tabbar {
+  position: fixed; left: 0; right: 0; bottom: 0; z-index: 20;
+  display: grid; grid-template-columns: repeat(4, 1fr);
+  background: var(--surface-1);
+  border-top: 1px solid var(--line);
+  padding-bottom: env(safe-area-inset-bottom);
+}
+.tabbar button {
+  border: 0; background: none; border-radius: 0; min-height: 68px;
+  display: flex; flex-direction: column; align-items: center; justify-content: center;
+  gap: 4px; padding: 0; position: relative;
+  font-family: var(--font-display); font-size: var(--t-xs); font-weight: 500;
+  letter-spacing: 0.06em; text-transform: uppercase; color: var(--text-secondary);
+}
+.tabbar button:active { background: transparent; }
+.tabbar button[aria-current="page"] { color: var(--accent-ink); font-weight: 600; }
+.tabbar .glyph { display: grid; place-items: center; height: 24px; }
+.tabbar .badge {
+  position: absolute; top: 10px; left: 50%; margin-left: 4px;
+  background: var(--accent); color: var(--on-accent); border-radius: var(--r-full);
+  font-size: 10px; min-width: 16px; height: 16px; line-height: 16px;
+  text-align: center; padding: 0 4px; font-weight: 700;
+  box-shadow: 0 0 0 2px var(--surface-1);
+}
+body.has-tabbar .app { padding-bottom: 150px; }
+body.has-tabbar .footer { bottom: 68px; }
+
+/* ---- 8. recipe builder ------------------------------------------------ */
+
+.shelf { display: flex; flex-wrap: wrap; gap: 6px; }
+.chip {
+  min-height: 40px; border-radius: var(--r-full); padding: 0 var(--s3);
+  border: 1px solid var(--line); background: var(--surface-1);
+  display: flex; flex-direction: row; align-items: center; gap: 6px;
+  font-family: var(--font-display); font-size: var(--t-sm); font-weight: 600;
+  touch-action: none; user-select: none; cursor: grab;
+}
+.chip small { color: var(--text-secondary); font-size: var(--t-xs); font-weight: 500; }
+.chip.used { border-color: var(--accent-ink); background: transparent; color: var(--accent-ink); }
+.chip.used small { color: var(--accent-ink); opacity: 0.8; }
+.chip.add { border-style: dashed; border-color: var(--text-dim); color: var(--text-secondary);
+            background: transparent; cursor: pointer; }
+
+/* The recipe itself is a drop target and says so with a dashed edge. */
+.card.drop { border-style: dashed; border-color: var(--spark-dim);
+             transition: border-color .12s, background .12s; }
+.card.drop.over { border-color: var(--accent); background: var(--accent-soft); }
+.dragghost {
+  position: fixed; z-index: 100; pointer-events: none;
+  transform: translate(-50%, -140%);
+  background: var(--accent); color: var(--on-accent); border-radius: var(--r-full);
+  padding: var(--s2) var(--s4); font-family: var(--font-display);
+  font-size: var(--t-sm); font-weight: 700;
+  box-shadow: 0 8px 24px rgb(0 0 0 / 0.4);
+}
+
+.row.reciperow { grid-template-columns: 56px 32px minmax(0, 1fr) 44px 32px;
+                 padding: var(--s1) 0; min-height: 44px; border-color: var(--surface-2); }
+.row.reciperow .qty {
+  width: 56px; height: 34px; padding: 0 var(--s2); background: var(--surface-2);
+  border: 0; border-radius: var(--r-sm); color: var(--text-primary);
+  font-family: var(--font-display); font-size: 15px; font-weight: 600;
+  text-align: right; font-variant-numeric: tabular-nums;
+}
+.row.reciperow .qty:focus { outline: none; box-shadow: inset 0 0 0 1px var(--accent); }
+.row.reciperow .unit { font-family: var(--font-display); font-size: var(--t-sm);
+                       color: var(--text-secondary); }
+.row.reciperow .name { font-size: 14px; }
+.row.reciperow .cost { text-align: right; font-family: var(--font-display);
+                       font-size: var(--t-sm); color: var(--text-secondary);
+                       font-variant-numeric: tabular-nums; }
+.row.reciperow .x {
+  width: 32px; height: 32px; min-height: 32px; border: 0; background: transparent;
+  color: var(--text-dim); border-radius: var(--r-sm); padding: 0;
+}
+.grid3 { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: var(--s2); }
+.grid3 .field { margin: var(--s1) 0; }
+
+ul.plain { margin: var(--s2) 0; padding-left: var(--s5); font-size: var(--t-sm);
+           color: var(--text-secondary); }
+ul.plain li { margin: var(--s1) 0; }
+ul.plain strong { color: var(--text-primary); }
+
+/* The "made" figure beside a row on the leftovers count. */
+.row .aside { display: grid; place-items: center; min-width: 44px; }
+.row .aside .made {
+  font-size: 14px; font-weight: 500; color: var(--text-secondary);
+  text-align: right; width: 100%;
+}
+
+/* The trend sparkline under the recap fills its card width. */
+.trend-spark { width: 100%; height: 40px; }
+
+/* Hero figure with two supporting figures at its right. */
+.hero-row { display: flex; justify-content: space-between; align-items: flex-end; gap: var(--s3); }
+.hero-row .stat.hero { flex: none; }
+.hero-row .stat.hero .value { margin-top: 6px; }
+.hero-side { display: flex; flex-direction: column; align-items: flex-end; gap: 6px; padding-bottom: 4px; }
+.hero-side .num { font-size: 20px; font-weight: 600; line-height: 1; }
+.hero-side .num span { font-size: var(--t-sm); font-weight: 500; color: var(--text-secondary);
+                       font-family: var(--font-body); }
+.head-row { display: flex; justify-content: space-between; align-items: baseline; gap: var(--s3); }
+.eyebrow.small { font-size: var(--t-xs); }
+
+/* Visually hidden, available to assistive tech. */
+.sr-only { position: absolute; width: 1px; height: 1px; overflow: hidden;
+           clip: rect(0 0 0 0); white-space: nowrap; }
+/* A compact "+ Add" in a screen header. */
+header.bar .addbtn { order: 2; width: auto; padding: 0 var(--s4); font-size: var(--t-sm);
+                     border-style: dashed; border-color: var(--accent-ink);
+                     color: var(--accent-ink); background: transparent; }
+.rot45 { transform: rotate(45deg); }
+
+/* The header's compact Add: inline, not the 44px square the back button is. */
+header.bar > button.ghost.addbtn { display: inline-flex; width: auto; padding: 0 var(--s4); }
+/* "Rest sold out" is a shortcut, not the confirm: outlined amber, not filled,
+   so the two footer states do not look like the same button. */
+button.primary.rest { background: transparent; border: 1px solid var(--accent-ink);
+                      color: var(--accent-ink); }
+button.primary.rest:active { background: var(--accent-soft); }
