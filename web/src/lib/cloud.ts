@@ -70,6 +70,19 @@ export const getSession = (): Session | null => readLocal<Session>(SESSION_KEY);
 export const isConfigured = () => !!getConfig();
 export const isSignedIn = () => !!getSession();
 
+/**
+ * One answer to "is this backed up?", used everywhere it is asked -- the
+ * header chip, the Today tile, the Setup row. They used to answer separately
+ * and disagreed: the tile said "up to date" while sync was signed out. After
+ * a morning's entries went missing, the app does not get to imply a cloud
+ * copy that is not being made.
+ */
+export function syncStatus(pending: number): { label: string; live: boolean } {
+  if (!isConfigured()) return { label: "cloud not set up", live: false };
+  if (!isSignedIn()) return { label: "cloud signed out", live: false };
+  return pending ? { label: `${pending} to sync`, live: true } : { label: "backed up", live: true };
+}
+
 export function signOut(): void {
   localStorage.removeItem(SESSION_KEY);
   localStorage.removeItem(CURSOR_KEY);

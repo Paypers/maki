@@ -12,12 +12,18 @@
      6. data            rows, column headers, sparklines, stats, charts
      7. navigation      tab bar, sticky footer
      8. recipe builder
+     9-11. calendar, day sheet, weather
+     12. the board      Today, the tiles, Make/Count lists, Setup
 
-   Amber is the one accent and it does three jobs: primary action, "the rule
-   disagrees with you", and "this sold out". Those are all the same message
-   -- look here -- so they share a colour. Red is reserved for actually wrong
-   (more waste than was made); green for confirmed/saved. Nothing else is
-   coloured.
+   A work tool, not a showcase: dense, everything on screen, every colour
+   meaning exactly one thing wherever it appears --
+     amber  something is owed by you, and the one primary action
+     blue   a number the rule suggested (never one you entered)
+     green  saved
+     red    late, or actually wrong (more waste than was made)
+   Nothing else is coloured. Amber used to carry "the rule disagrees" and
+   "this sold out" as well, which is how the app stopped reading as one
+   system: the same colour said three things on three screens.
 
    Two ambers. As a FILL under dark text the bright one works on any ground.
    As TEXT or a thin STROKE on a light ground it fails contrast (1.9:1), so
@@ -63,11 +69,27 @@
   --accent-ink: #f2a93b;       /* text and strokes; darker on light */
   --on-accent: #0f0f0e;        /* text on an amber fill */
   --accent-soft: rgba(242, 169, 59, 0.14);
-  --series-1: #f2a93b;
+  --series-1: #cfc9bc;         /* data ink: neutral, because amber means owed */
   --good: #4dbb6a;
   --critical: #e66767;
   --warning: #f2a93b;
   --spark-dim: #3d3b36;        /* the recessive part of a sparkline */
+
+  /* One colour per meaning, everywhere:
+       amber  -- something is owed by you (and the one primary action)
+       blue   -- a number the rule suggested, never one you entered
+       green  -- saved
+       red    -- late or failed                                        */
+  --owed-line: #6b5126;
+  --owed-soft: #2a2114;
+  --rule-ink: #8db4ea;
+  --rule-soft: #16202c;
+  --rule-line: #3d5a80;
+  --good-ink: #9fdcb5;
+  --good-soft: #15251b;
+  --good-line: #2f5a3f;
+  --critical-ink: #f29a9a;
+  --critical-soft: #3a1f1f;
 
   --font-display: "Space Grotesk", "Manrope", system-ui, sans-serif;
   --font-body: "Manrope", system-ui, -apple-system, "Segoe UI", sans-serif;
@@ -106,11 +128,21 @@
     --accent-ink: #9a5c06;
     --on-accent: #14130f;
     --accent-soft: rgba(154, 92, 6, 0.10);
-    --series-1: #9a5c06;
+    --series-1: #5f5b53;
     --good: #2e7d4f;
     --critical: #d03b3b;
     --warning: #9a5c06;
     --spark-dim: #c9c5bb;
+    --owed-line: #e0b36a;
+    --owed-soft: #fbf0dd;
+    --rule-ink: #1f5aa6;
+    --rule-soft: #e6eef9;
+    --rule-line: #9dbbe3;
+    --good-ink: #1f6b3f;
+    --good-soft: #e3f2e8;
+    --good-line: #9fcfb0;
+    --critical-ink: #a82a2a;
+    --critical-soft: #f9e3e3;
   }
 }
 :root[data-theme="light"] {
@@ -129,11 +161,21 @@
   --accent-ink: #9a5c06;
   --on-accent: #14130f;
   --accent-soft: rgba(154, 92, 6, 0.10);
-  --series-1: #9a5c06;
+  --series-1: #5f5b53;
   --good: #2e7d4f;
   --critical: #d03b3b;
   --warning: #9a5c06;
   --spark-dim: #c9c5bb;
+  --owed-line: #e0b36a;
+  --owed-soft: #fbf0dd;
+  --rule-ink: #1f5aa6;
+  --rule-soft: #e6eef9;
+  --rule-line: #9dbbe3;
+  --good-ink: #1f6b3f;
+  --good-soft: #e3f2e8;
+  --good-line: #9fcfb0;
+  --critical-ink: #a82a2a;
+  --critical-soft: #f9e3e3;
 }
 
 /* ---- 3. base ---------------------------------------------------------- */
@@ -264,6 +306,13 @@ details[open].banner > summary::after { transform: rotate(-135deg) translateY(2p
 .banner.warn { color: var(--text-primary); }
 .banner.as-details { display: block; }
 .banner.as-details > p { margin: var(--s2) 0 0; }
+/* A failed save, shown INSIDE the fixed footer so it sits against the button
+   that just did nothing. Anywhere else in the page it can be scrolled out of
+   sight, which for this one message defeats the point of showing it. */
+.footer .banner.save-failed {
+  max-width: 560px; margin: 0 auto var(--s3);
+  border-color: var(--critical); background: var(--surface-2);
+}
 
 /* ---- 5. controls ------------------------------------------------------ */
 
@@ -420,7 +469,7 @@ button.small.wants {
 /* Sparkline: ten days, recessive stroke; the accent when the story is that
    the line is flat against the ceiling (sold out). */
 .spark { display: block; color: var(--spark-dim); }
-.spark.hot { color: var(--accent-ink); }
+.spark.hot { color: var(--text-primary); }
 
 /* One stepper: recessed well, no border, number in the display face. */
 .stepper {
@@ -484,7 +533,7 @@ button.small.wants {
   font-family: var(--font-display); font-size: 40px; font-weight: 700;
   letter-spacing: -0.04em; line-height: 1; font-variant-numeric: tabular-nums;
 }
-.stat.accent .value { color: var(--accent-ink); }
+.stat.accent .value { color: var(--text-primary); }
 /* One hero per view, the number the screen is about. */
 .stats:has(.stat.hero) { grid-template-columns: minmax(0, 1.4fr) minmax(0, 1fr); }
 .stat.hero .value { font-size: var(--t-hero); }
@@ -736,3 +785,401 @@ header.bar > button.ghost.addbtn { display: inline-flex; width: auto; padding: 0
 button.primary.rest { background: transparent; border: 1px solid var(--accent-ink);
                       color: var(--accent-ink); }
 button.primary.rest:active { background: var(--accent-soft); }
+
+/* ---- 9. waiting list, week strip, calendar, day sheet ------------------ */
+
+/* ---- the month grid ---- */
+.cal-nav { display: flex; align-items: center; justify-content: space-between;
+           gap: var(--s3); margin: var(--s2) 0; }
+.cal-nav > button.ghost { width: 44px; height: 44px; min-height: 44px; padding: 0;
+                          border-radius: var(--r-md); }
+.cal { margin: var(--s3) 0; }
+.cal-wd { display: grid; grid-template-columns: repeat(7, minmax(0, 1fr));
+          gap: 4px; margin-bottom: 6px; }
+.cal-wd span { text-align: center; font-family: var(--font-display);
+               font-size: var(--t-xs); font-weight: 500; letter-spacing: 0.1em;
+               color: var(--text-secondary); }
+.cal-grid { display: grid; grid-template-columns: repeat(7, minmax(0, 1fr)); gap: 4px; }
+.cal-day {
+  position: relative; aspect-ratio: 1; min-height: 0; padding: 0;
+  display: flex; align-items: center; justify-content: center;
+  background: var(--surface-2); border: 1px solid transparent;
+  border-radius: var(--r-md); overflow: hidden;
+  font-family: var(--font-display);
+}
+.cal-day:active { background: var(--surface-3); }
+.cal-day .n { font-size: 14px; font-weight: 600; z-index: 1; line-height: 1; }
+/* The waste bar grows from the bottom edge, behind the number. Ink rather than
+   the accent: how much came back is a magnitude, not a status, and the two
+   must stay separate channels or the grid becomes unreadable. */
+.cal-day .bar {
+  position: absolute; left: 0; right: 0; bottom: 0;
+  background: var(--spark-dim); z-index: 0;
+}
+.cal-day .bar[data-rate="high"] { background: var(--text-dim); }
+/* Production in, leftovers not counted: a dot, distinct from the needs-ring. */
+.cal-day .dot {
+  position: absolute; top: 4px; right: 4px; width: 5px; height: 5px;
+  border-radius: var(--r-full); background: var(--accent); z-index: 1;
+}
+.cal-day.p-empty, .cal-day.p-future { background: transparent; }
+.cal-day.p-empty .n, .cal-day.p-future .n { color: var(--text-dim); font-weight: 500; }
+.cal-day.p-outage { background: transparent; }
+.cal-day.p-outage .n { color: var(--text-dim); text-decoration: line-through; }
+.cal-day.out { opacity: 0.35; }
+.cal-day.needs { border-color: var(--accent); }
+.cal-day.is-today { border-color: var(--accent-ink); border-style: dashed; }
+.cal-day.is-today .n { color: var(--accent-ink); }
+.cal-day:disabled { cursor: default; }
+
+.cal-key { display: flex; flex-wrap: wrap; gap: var(--s4); margin: var(--s2) 0 var(--s4);
+           font-size: var(--t-sm); color: var(--text-secondary); }
+.cal-key span { display: inline-flex; align-items: center; gap: 6px; }
+.cal-key i { width: 12px; height: 12px; border-radius: 3px; flex: none; }
+.cal-key i.k-needs { border: 1px solid var(--accent); }
+.cal-key i.k-open { background: var(--accent); border-radius: var(--r-full);
+                    width: 6px; height: 6px; }
+.cal-key i.k-bar { background: var(--spark-dim); height: 6px; border-radius: 1px; }
+
+/* ---- the day sheet ---- */
+.sheet-wrap { position: fixed; inset: 0; z-index: 40; display: flex;
+              flex-direction: column; justify-content: flex-end; }
+.sheet-scrim { position: absolute; inset: 0; background: rgb(0 0 0 / 0.55);
+               border: 0; border-radius: 0; padding: 0; min-height: 0;
+               backdrop-filter: blur(2px); -webkit-backdrop-filter: blur(2px); }
+.sheet-scrim:active { background: rgb(0 0 0 / 0.55); }
+.sheet {
+  position: relative; background: var(--surface-1);
+  border-top-left-radius: var(--r-lg); border-top-right-radius: var(--r-lg);
+  border-top: 1px solid var(--line);
+  padding: var(--s4) var(--s5) calc(var(--s5) + env(safe-area-inset-bottom));
+  max-height: 86vh; overflow-y: auto; -webkit-overflow-scrolling: touch;
+  animation: sheet-up .18s ease-out;
+}
+@keyframes sheet-up { from { transform: translateY(12px); opacity: 0.6; } }
+.sheet-head { display: flex; align-items: flex-start; justify-content: space-between;
+              gap: var(--s3); margin-bottom: var(--s4); }
+.sheet-head h2 { font-size: 24px; letter-spacing: -0.02em; margin-top: 4px; }
+.sheet-x { width: 40px; height: 40px; min-height: 40px; padding: 0; flex: none;
+           border-radius: var(--r-full); display: grid; place-items: center; }
+.sheet-cost { margin-top: var(--s3); }
+.sheet-cost strong { color: var(--accent-ink); font-family: var(--font-display); }
+.sheet-cols { grid-template-columns: minmax(0, 1fr) 52px 52px; margin-top: var(--s4); }
+.sheet-lines { display: flex; flex-direction: column; }
+.sheet-line { display: grid; grid-template-columns: minmax(0, 1fr) 52px 52px;
+              align-items: center; column-gap: var(--s2);
+              padding: var(--s2) var(--s1); border-bottom: 1px solid var(--line-soft);
+              font-size: var(--t-body); }
+.sheet-line:last-child { border-bottom: 0; }
+.sheet-line .nm { overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+                  font-weight: 500; }
+.sheet-line .num { text-align: right; font-size: var(--t-sm);
+                   color: var(--text-secondary); font-weight: 600; }
+.sheet-line .num.hot { color: var(--accent-ink); }
+.sheet-actions { display: flex; flex-direction: column; gap: var(--s2);
+                 margin-top: var(--s5); }
+.sheet-actions button { width: 100%; }
+
+/* A second trend line, for cost. Distinguished from the leftovers line by
+   being drawn in the accent -- same shape, different measure. */
+.trend-spark.cost { color: var(--text-primary); }
+
+/* ---- 10. weather ------------------------------------------------------ */
+
+.wx-bands { display: flex; flex-direction: column; gap: var(--s4); margin: var(--s4) 0; }
+.wx-row { display: flex; align-items: baseline; justify-content: space-between; gap: var(--s3); }
+.wx-name { font-size: var(--t-body); font-weight: 600; }
+.wx-pct { font-family: var(--font-display); font-size: 20px; font-weight: 700;
+          font-variant-numeric: tabular-nums; letter-spacing: -0.02em; }
+.wx-track { height: 8px; background: var(--surface-2); border-radius: 0 4px 4px 0;
+            margin-top: 6px; }
+.wx-fill { height: 100%; border-radius: 0 4px 4px 0; min-width: 2px; }
+/* Confidence is carried by weight and by a written verdict, never by colour
+   alone: a solid finding is the accent at full strength, a weak one is the
+   same hue at half, and both say which in words underneath. */
+.wx-pct.t-solid, .wx-fill.t-solid { color: var(--text-primary); background: var(--series-1); }
+.wx-pct.t-solid { background: none; }
+.wx-pct.t-weak { color: var(--text-secondary); }
+.wx-fill.t-weak { background: var(--spark-dim); }
+.wx-pct.t-none, .wx-fill.t-none { color: var(--text-dim); background: var(--surface-3); }
+.wx-pct.t-none { background: none; }
+.wx-verdict { font-size: var(--t-sm); color: var(--text-secondary); margin-top: 5px; }
+.wx-verdict.t-solid { color: var(--accent-ink); font-weight: 600; }
+.wx-verdict-banner.soft { color: var(--text-secondary); }
+.wx-detail { margin-top: var(--s3); }
+.wx-detail ul.plain li { margin: var(--s2) 0; line-height: 1.5; }
+
+/* The production-sheet advisory: a banner you can act on. */
+.wx-advice { display: flex; align-items: flex-start; gap: var(--s3); }
+.wx-advice .body { flex: 1; min-width: 0; }
+.wx-advice .body strong { color: var(--text-primary); }
+.wx-advice-actions { display: flex; gap: var(--s2); margin-top: var(--s3); }
+.wx-advice-actions button { flex: 1; min-height: 40px; font-size: var(--t-sm); }
+.wx-applied { border-color: var(--accent-ink); }
+
+/* The update prompt. Sits directly above the tab bar so it is unmissable
+   without covering the screen, and never appears mid-task on its own. */
+.updatebar {
+  position: fixed; left: 0; right: 0; bottom: 68px; z-index: 25;
+  display: flex; align-items: center; gap: var(--s3);
+  padding: var(--s3) var(--s5);
+  background: var(--surface-1); border-top: 1px solid var(--accent-ink);
+  font-size: var(--t-sm); color: var(--text-primary);
+}
+.updatebar .ico { flex: none; color: var(--accent-ink); }
+.updatebar span { flex: 1; min-width: 0; }
+.updatebar button { flex: none; background: var(--accent); border-color: transparent;
+                    color: var(--on-accent); font-weight: 700; }
+body.has-tabbar .footer { bottom: 68px; }
+
+/* Field-level validation. Amber, not red: a six-digit ZIP is a typo being
+   corrected as it is typed, not an error state the operator has landed in. */
+p.hint.warn {
+  color: var(--accent-ink); font-weight: 500;
+  margin-top: calc(var(--s2) * -1); margin-bottom: var(--s3);
+}
+
+/* ---- 12. the board ----------------------------------------------------- */
+/* Today, the tiles, the Make/Count lists and Setup. Tighter than the rest of
+   the app used to be, on purpose: the operator asked for everything on one
+   screen, not for air. 16px gutters, compact headers, 44px targets kept. */
+
+.app { padding-left: var(--s4); padding-right: var(--s4); }
+header.bar { padding: var(--s4) 0 var(--s2); }
+header.bar h1 { font-size: 26px; }
+header.bar .sub { font-size: 11px; letter-spacing: 0.12em; }
+
+/* Saved-on-phone, in the same corner of every main screen. */
+.savechip {
+  flex: none; align-self: flex-end; display: inline-flex; align-items: center; gap: 5px;
+  height: 30px; padding: 0 10px; border-radius: var(--r-full);
+  background: var(--surface-1); border: 1px solid var(--line);
+  font-size: 12px; font-weight: 600; color: var(--text-secondary); white-space: nowrap;
+}
+.savechip strong { color: var(--text-primary); font-weight: 600; }
+.savechip .ok { color: var(--good-ink); }
+header.bar.main > button.ghost { order: 3; }
+
+/* A temporary per-deploy address. Loud, because the data here is stranded. */
+.banner.stranded { border-color: var(--critical); background: var(--critical-soft); margin-top: var(--s3); }
+.banner.stranded .actions { margin-top: var(--s2); flex-wrap: wrap; }
+a.button {
+  display: inline-flex; align-items: center; justify-content: center; flex: 1;
+  min-height: 36px; padding: 0 var(--s3); border-radius: var(--r-md);
+  font-size: var(--t-sm); font-weight: 700; text-decoration: none;
+  background: var(--surface-2); color: var(--text-primary);
+}
+a.button.primary { background: var(--accent); color: var(--on-accent); }
+
+/* ---- today: the weather strip ---- */
+.wx-today {
+  display: grid; grid-template-columns: auto minmax(0, 1fr) auto; align-items: center;
+  column-gap: var(--s3); row-gap: 4px; width: 100%; margin: var(--s2) 0;
+  padding: 10px var(--s3); text-align: left; justify-content: stretch;
+  background: var(--surface-1); border: 1px solid var(--line); border-radius: var(--r-lg);
+  font-family: var(--font-body); font-weight: 500; color: var(--text-primary);
+}
+.wx-today:active { background: var(--surface-2); }
+.wx-glyph { flex: none; color: var(--text-secondary); }
+.wx-main { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+.wx-main strong { font-size: 15px; font-weight: 700; }
+.wx-main span { font-size: 12px; color: var(--text-secondary); }
+.wx-proj { display: flex; flex-direction: column; align-items: flex-end; gap: 2px; }
+.wx-proj .big { font-size: 22px; font-weight: 700; line-height: 1; }
+.wx-proj .big small { font-size: 12px; font-weight: 600; color: var(--text-secondary); }
+.delta-line { font-size: 12px; font-weight: 600; white-space: nowrap; }
+.delta-line.t-solid { color: var(--text-primary); }
+.delta-line.t-weak  { color: var(--text-secondary); }
+.delta-line.t-none  { color: var(--text-dim); }
+.wx-why { grid-column: 1 / -1; font-size: 11.5px; color: var(--text-secondary); line-height: 1.35; }
+.wx-setup .chev { color: var(--text-dim); }
+
+/* ---- today: owed ---- */
+.waiting {
+  border: 1px solid var(--owed-line); border-radius: var(--r-lg);
+  background: var(--surface-1); margin: var(--s2) 0; overflow: hidden;
+}
+.waiting.done { border-color: var(--good-line); }
+.waiting-head {
+  display: flex; align-items: center; gap: var(--s2); padding: 9px var(--s3) 7px;
+}
+.waiting-head .eyebrow { font-size: 11px; font-weight: 700; letter-spacing: 0.12em; }
+.waiting-head .count {
+  display: inline-grid; place-items: center; min-width: 20px; height: 20px; padding: 0 6px;
+  border-radius: var(--r-full); background: var(--accent); color: var(--on-accent);
+  font-size: 12px; font-weight: 700;
+}
+.waiting-head .spacer { flex: 1; }
+.waiting-head .ico.ok { color: var(--good-ink); }
+.hint-inline { font-size: 12px; color: var(--text-secondary); }
+.hint-inline strong { color: var(--text-primary); }
+.waiting.done .hint-inline { display: block; padding: 0 var(--s3) 10px; margin: 0; }
+.waiting-row {
+  display: flex; align-items: center; gap: 10px; width: 100%; min-height: 48px;
+  padding: 0 var(--s3); background: transparent; border: 0;
+  border-top: 1px solid var(--line); border-radius: 0; text-align: left;
+  justify-content: flex-start; font-family: var(--font-body); font-weight: 500;
+}
+.waiting-row:active { background: var(--surface-2); }
+.waiting-row .ico { flex: none; color: var(--accent-ink); }
+.waiting-row .who { flex: 1; min-width: 0; font-size: 14px; }
+.waiting-row .who strong { font-weight: 700; color: var(--text-primary); }
+.waiting-row .who span { color: var(--text-secondary); }
+.waiting-row .chev { flex: none; color: var(--text-dim); }
+.tag { flex: none; font-size: 12px; color: var(--text-secondary); white-space: nowrap; }
+.tag.late {
+  padding: 2px 7px; border-radius: var(--r-sm); font-size: 11px; font-weight: 700;
+  background: var(--critical-soft); color: var(--critical-ink);
+}
+
+/* ---- today: every part of the app, one tap each ---- */
+.tiles { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: var(--s2); margin: var(--s2) 0; }
+.tile {
+  display: flex; flex-direction: column; align-items: flex-start; justify-content: space-between;
+  min-height: 78px; padding: 10px; text-align: left; gap: 6px;
+  background: var(--surface-1); border: 1px solid var(--line); border-radius: var(--r-lg);
+  font-family: var(--font-body); color: var(--text-primary);
+}
+.tile:active { background: var(--surface-2); }
+.tile-text { display: flex; flex-direction: column; gap: 1px; min-width: 0; }
+.tile-text strong { font-size: 14px; font-weight: 700; }
+.tile-text span { font-size: 11.5px; font-weight: 500; color: var(--text-secondary); }
+.tile-text span.owed { color: var(--accent-ink); font-weight: 700; }
+.tile-text span.ok { color: var(--good-ink); font-weight: 600; }
+.tile-text span.rule { color: var(--rule-ink); font-weight: 600; }
+
+/* ---- today: the week ---- */
+.card.week-card { padding: 10px var(--s3); margin: var(--s2) 0; }
+.week-card .head-row, .card .head-row {
+  display: flex; align-items: baseline; justify-content: space-between; gap: var(--s2);
+}
+.week-card .eyebrow { font-size: 11px; font-weight: 700; letter-spacing: 0.12em; }
+.week { display: grid; grid-template-columns: repeat(7, minmax(0, 1fr)); gap: 6px; margin-top: var(--s2); }
+.week-day {
+  display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 1px;
+  min-height: 46px; padding: 0; border: 1px solid transparent;
+  background: var(--surface-2); border-radius: var(--r-md); font-family: var(--font-display);
+}
+.week-day:active { background: var(--surface-3); }
+.week-day .wd { font-size: 10.5px; color: var(--text-secondary); font-weight: 500; }
+.week-day .wv { font-size: 16px; font-weight: 700; color: var(--text-primary); min-height: 18px; }
+.week-day.p-empty, .week-day.p-future { background: transparent; border-color: var(--line); }
+.week-day.p-outage .wv { color: var(--text-dim); }
+/* Owed: a day that traded and was never counted. Amber, like every owed thing. */
+.week-day.needs { background: var(--owed-soft); border-color: var(--owed-line); }
+.week-day.needs .wv { color: var(--accent-ink); }
+.week-day.is-today { background: transparent; border: 1px dashed var(--text-dim); }
+.week-day.is-today .wv { font-size: 11px; font-weight: 600; color: var(--text-secondary); }
+.week-day.is-today.p-closed .wv { font-size: 16px; color: var(--text-primary); }
+
+/* ---- Make and Count ---- */
+/* Three numbers across the top, the same shape on both screens. */
+.totals {
+  display: grid; grid-auto-flow: column; grid-auto-columns: minmax(0, 1fr);
+  margin: var(--s2) 0; background: var(--surface-1); border: 1px solid var(--line);
+  border-radius: var(--r-lg);
+}
+.totals > div { display: flex; flex-direction: column; gap: 4px; padding: 10px var(--s3); min-width: 0; }
+.totals > div + div { border-left: 1px solid var(--line); }
+.totals .k {
+  font-family: var(--font-display); font-size: 10.5px; font-weight: 700;
+  letter-spacing: 0.1em; text-transform: uppercase; color: var(--text-secondary);
+}
+.totals .v { font-size: 28px; font-weight: 700; line-height: 1; }
+.totals .v small { font-size: 15px; color: var(--text-secondary); }
+.totals .v.rule { color: var(--rule-ink); }
+.totals .v.dim { color: var(--text-secondary); }
+
+/* The one-tap fills. Blue for the rule's, neutral for yours. */
+.quick { display: flex; gap: var(--s2); margin: var(--s2) 0 var(--s3); }
+.quick button {
+  flex: 1; min-height: 44px; padding: 0 6px; font-size: 13px; font-weight: 700;
+  border-radius: 10px; background: var(--surface-1); border: 1px solid var(--line);
+  color: var(--text-primary);
+}
+.quick button.rule { background: var(--rule-soft); border-color: var(--rule-line); color: var(--rule-ink); }
+
+.lede { margin: var(--s2) 0 var(--s3); font-size: 12.5px; line-height: 1.45; color: var(--text-secondary); }
+.lede strong { color: var(--text-primary); }
+
+/* Column heads, aligned to the list's three columns. */
+.cols.qcols {
+  grid-template-columns: minmax(0, 1fr) 40px 132px; border-bottom: 0;
+  padding: 0 6px 6px var(--s3);
+}
+.cols.qcols.no-ref { grid-template-columns: minmax(0, 1fr) 132px; }
+.cols.qcols .rule { color: var(--rule-ink); }
+
+/* The list: the paper sheet's blocks, one card each. */
+.qlist { display: flex; flex-direction: column; gap: 10px; }
+.qgroup { background: var(--surface-1); border: 1px solid var(--line); border-radius: var(--r-lg); overflow: hidden; }
+.row.qrow {
+  grid-template-columns: minmax(0, 1fr) 40px 132px; min-height: 54px;
+  padding: 4px 6px 4px var(--s3); border-bottom: 0; border-top: 1px solid var(--line-soft);
+}
+.row.qrow:first-child { border-top: 0; }
+.row.qrow.no-ref { grid-template-columns: minmax(0, 1fr) 132px; }
+.qname { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+.qname .name { font-size: 14px; font-weight: 700; line-height: 1.2; }
+.qname .meta {
+  display: flex; align-items: center; gap: 4px; font-size: 11.5px; line-height: 1.25;
+  color: var(--text-secondary); font-variant-numeric: tabular-nums;
+}
+.qname .meta.caveat { color: var(--text-primary); font-weight: 700; }
+.qname .meta .ico { flex: none; color: var(--critical-ink); }
+/* The rule explaining itself: blue, because blue is the rule's number. */
+.qname .why-rule {
+  font-size: 11.5px; line-height: 1.25; font-weight: 600;
+  color: var(--rule-ink); font-variant-numeric: tabular-nums;
+}
+.qref { text-align: center; font-size: 16px; font-weight: 700; color: var(--text-secondary); }
+.qref.rule { color: var(--rule-ink); }
+/* A row you have looked at: a quiet ring, not amber -- amber means owed. */
+.stepper.touched { box-shadow: inset 0 0 0 1px var(--text-dim); }
+.stepper.touched input { color: var(--text-primary); }
+
+/* Count: switch between every owed day without leaving the screen. */
+.daypick {
+  display: grid; grid-auto-flow: column; grid-auto-columns: minmax(96px, 1fr);
+  gap: var(--s2); margin: var(--s2) 0; overflow-x: auto; scrollbar-width: none;
+}
+.daypick button {
+  display: flex; flex-direction: column; align-items: flex-start; justify-content: center; gap: 2px;
+  min-height: 52px; padding: 0 10px; text-align: left; border-radius: 10px;
+  background: var(--surface-1); border: 1px solid var(--line); font-family: var(--font-body);
+}
+.daypick button strong { font-size: 13.5px; font-weight: 700; color: var(--text-primary); }
+.daypick button span { font-size: 11px; font-weight: 700; color: var(--accent-ink); }
+.daypick button.late span { color: var(--critical-ink); }
+.daypick button.done span { color: var(--good-ink); }
+.daypick button.on { background: var(--surface-2); border-color: var(--text-primary); }
+
+/* ---- History ---- */
+h2.section-title { margin: var(--s3) 0 0; font-size: 18px; font-weight: 700; }
+
+/* ---- Setup: one level, every row says what it is set to ---- */
+h2.setgroup {
+  margin: var(--s4) var(--s3) 6px; font-size: 11px; font-weight: 700;
+  letter-spacing: 0.12em; text-transform: uppercase; color: var(--text-secondary);
+}
+.setlist { background: var(--surface-1); border: 1px solid var(--line); border-radius: var(--r-lg); overflow: hidden; }
+.setrow {
+  display: flex; align-items: center; gap: 10px; width: 100%; min-height: 52px;
+  padding: 0 var(--s3); background: transparent; border: 0; border-radius: 0;
+  border-top: 1px solid var(--line-soft); text-align: left; justify-content: flex-start;
+  font-family: var(--font-body); color: var(--text-primary);
+}
+.setrow:first-child { border-top: 0; }
+button.setrow:active { background: var(--surface-2); }
+.setrow .label { flex: 1; min-width: 0; font-size: 15px; font-weight: 700; }
+.setrow .value { font-size: 13px; font-weight: 500; color: var(--text-secondary); text-align: right; }
+.setrow .value.rule { color: var(--rule-ink); font-weight: 700; }
+.setrow .value.ok { color: var(--good-ink); font-weight: 700; }
+.setrow .value.dim { color: var(--text-dim); }
+.setrow .chev { flex: none; color: var(--text-dim); }
+
+/* ---- five tabs ---- */
+.tabbar { grid-template-columns: repeat(5, 1fr); }
+.tabbar button { min-height: 64px; font-size: 11px; letter-spacing: 0.03em; text-transform: none; }
+body.has-tabbar .footer { bottom: 64px; }
+.updatebar { bottom: 64px; }

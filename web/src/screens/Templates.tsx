@@ -76,8 +76,8 @@ export function Templates({
   return (
     <div>
       <header className="bar">
+        <h1>Usual amounts<span className="sub">what you make on a normal day, per weekday</span></h1>
         <button className="ghost" onClick={onBack} aria-label="Back"><Icon name="back" size={20} /></button>
-        <h1>Templates<span className="sub">your baseline</span></h1>
       </header>
 
       <div className="card">

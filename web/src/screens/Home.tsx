@@ -1,167 +1,227 @@
 /**
- * The task list. What the operator sees when they open the app.
+ * What the operator sees when they open the app: everything, at once.
  *
- * Computed from the data, not the clock: any day with production and no
- * confirmed waste count shows up here, so a missed day surfaces by itself and
- * backfill is the same screen rather than a mode you have to go find.
+ * This is a work tool opened at a counter with a case to fill, so the screen
+ * is a board, not a feed. Top to bottom, all of it on one phone screen:
+ *
+ *   save status   is what I typed safe? (in the header, on every screen)
+ *   weather       today's sky and what it points to, in one strip
+ *   owed          every job still owed, oldest first; a row per job, standing
+ *                 until it is done -- the failure mode is forgetting, not
+ *                 getting it wrong
+ *   everything    nine tiles, one per part of the app, each with its live
+ *                 state, so nothing is ever more than one tap from here
+ *   the week      what came back each of the last seven days
+ *
+ * Colour has one meaning each: amber is owed by you, blue is the rule's
+ * number, green is saved, red is late.
  */
 
 import type { BizDate, Task } from "../lib/businessDay";
-import { formatShort, weekdayName } from "../lib/businessDay";
-import { Icon } from "../components/Icon";
+import { addDays, formatShort, weekdayName } from "../lib/businessDay";
+import type { DayStat, DayStatIndex } from "../lib/dayStats";
+import { emptyDay } from "../lib/dayStats";
+import type { TodayOutlook } from "../lib/todayOutlook";
+import type { Settings } from "../lib/types";
+import { Icon, type IconName } from "../components/Icon";
+import { TodayCard } from "../components/TodayCard";
 import { Sparkline } from "../components/Sparkline";
+import { ScreenHeader } from "../components/ScreenHeader";
+import { syncStatus } from "../lib/cloud";
 
 export interface DaySummary {
-  /** Which day this is. Not necessarily yesterday -- see App.refresh. */
   date: BizDate;
-  /** How far back it is, so the card can say so instead of implying "recent". */
   ageDays: number;
   made: number;
-  /** Null when the count has not been done. Absence is not zero -- rendering
-   *  an uncounted day as "0 left over" is the exact mistake this app exists to
-   *  stop, and it would be a lie on the one screen the operator trusts most. */
+  /** Null when the count has not been done. Absence is not zero. */
   wasted: number | null;
   soldOut: number | null;
   /** Total leftovers per day, fourteen days to `date`; null = not counted. */
   trend: Array<number | null>;
+  /** Waste cost per day over the same window. */
+  costTrend: Array<number | null>;
 }
+
+export type HomeTarget =
+  | "make" | "count" | "history" | "templates" | "items" | "weather" | "cloud" | "reconcile";
 
 interface Props {
   today: BizDate;
   tasks: Task[];
   pending: number;
-  online: boolean;
-  /** The last day on record at a glance. Null until there is one. */
   summary: DaySummary | null;
+  stats: DayStatIndex;
+  outlook: TodayOutlook;
+  settings: Settings;
+  itemCount: number;
   onOpen: (task: Task) => void;
+  onGo: (target: HomeTarget) => void;
+  onPickDay: (date: BizDate) => void;
+}
+
+function taskLabel(t: Task, today: BizDate): { what: string; when: string } {
+  const when = t.date === today ? "today" : `${weekdayName(t.date).slice(0, 3)} ${formatShort(t.date)}`;
+  return t.kind === "waste"
+    ? { what: "Count leftovers", when }
+    : { what: "Enter what you made", when };
 }
 
 function ageLabel(ageDays: number): string {
-  if (ageDays === 0) return "Today";
-  if (ageDays === 1) return "Yesterday";
+  if (ageDays === 0) return "today";
+  if (ageDays === 1) return "yesterday";
   return `${ageDays} days ago`;
 }
 
+function Tile({ icon, label, sub, tone, onClick }: {
+  icon: IconName; label: string; sub: string; tone?: "owed" | "rule" | "ok";
+  onClick: () => void;
+}) {
+  return (
+    <button className="tile" onClick={onClick}>
+      <Icon name={icon} size={20} />
+      <span className="tile-text">
+        <strong>{label}</strong>
+        <span className={tone ?? ""}>{sub}</span>
+      </span>
+    </button>
+  );
+}
+
 export function Home({
-  today, tasks, pending, online, summary, onOpen,
+  today, tasks, pending, summary, stats, outlook, settings, itemCount,
+  onOpen, onGo, onPickDay,
 }: Props) {
-  const primary = tasks[0];
-  const rest = tasks.slice(1);
   const known = summary?.trend.filter((v): v is number => v !== null) ?? [];
-  const trendAvg = known.length ? Math.round(known.reduce((a, b) => a + b, 0) / known.length) : null;
+  const trendAvg = known.length
+    ? Math.round(known.reduce((a, b) => a + b, 0) / known.length) : null;
+  const knownCost = summary?.costTrend.filter((v): v is number => v !== null) ?? [];
+  const costAvg = knownCost.length
+    ? knownCost.reduce((a, b) => a + b, 0) / knownCost.length : null;
+
+  const week: DayStat[] = Array.from({ length: 7 }, (_, i) => {
+    const d = addDays(today, -(6 - i));
+    return stats.byDate.get(d) ?? emptyDay(d, today);
+  });
+
+  const owedCounts = tasks.filter((t) => t.kind === "waste").length;
+  const owedMake = tasks.some((t) => t.kind === "production" && t.date === today);
+  const todayStat = stats.byDate.get(today);
+  const weatherOn = !!settings.location && settings.weatherEnabled;
+  const sync = syncStatus(pending);
 
   return (
     <div>
-      <header className="bar">
-        <h1>
-          Today
-          <span className="sub">{weekdayName(today).slice(0, 3)} · {formatShort(today)}</span>
-        </h1>
-        <span className={`pill${pending ? " pending" : online ? "" : " offline"}`} title={
-          pending ? "Waiting to reach the server"
-                  : "Saved in this browser. Export a backup from More."}>
-          {pending ? `${pending} to sync` : online ? "Saved" : "Offline"}
-        </span>
-      </header>
+      <ScreenHeader title="Today" eyebrow={`${weekdayName(today).slice(0, 3)} · ${formatShort(today)}`} />
 
-      {!tasks.length && (
-        <div className="card">
-          <div className="eyebrow">Now</div>
-          <h2>All caught up</h2>
-          <p className="hint">
-            Today's production is confirmed and yesterday's leftovers are counted.
-          </p>
-        </div>
-      )}
+      <TodayCard outlook={outlook} weekday={weekdayName(today)}
+                 configured={weatherOn} onOpenWeather={() => onGo("weather")} />
 
-      {/* The one thing to do now. The eyebrow says NOW in the accent; the
-          heading states where things stand; the button carries the verb. */}
-      {primary && (
-        <div className="card focal">
-          <div className="eyebrow accent">Now</div>
-          <h2>
-            {primary.kind === "waste"
-              ? `${weekdayName(primary.date)}'s leftovers aren't counted`
-              : primary.date === today
-                ? "Nothing made yet"
-                : `${weekdayName(primary.date)} was never planned`}
-          </h2>
-          <p className="hint">
-            {primary.kind === "waste"
-              ? "Count them and today's plan opens automatically."
-              : `${weekdayName(primary.date)} template loaded. Adjust anything that looks wrong, then confirm.`}
-          </p>
-          <button className="primary" onClick={() => onOpen(primary)}>
-            <span style={{ flex: 1, textAlign: "left" }}>
-              {primary.kind === "waste"
-                ? `Count ${weekdayName(primary.date)}'s leftovers`
-                : "Open production sheet"}
-            </span>
-            <Icon name="chevron" size={20} />
-          </button>
-        </div>
-      )}
-
-      {rest.length > 0 && (
-        <div className="card">
-          <div className="eyebrow">Also outstanding</div>
-          <p className="hint" style={{ marginTop: 6 }}>Missed days stay here until they're filled in.</p>
-          <div className="tasklist">
-            {rest.map((t) => (
-              <button className="task" key={`${t.date}-${t.kind}`} onClick={() => onOpen(t)}>
-                <Icon name={t.kind === "waste" ? "trash" : "calendar"}
-                      size={20} className="ico" />
-                <div className="who">
-                  <strong>
-                    {t.kind === "waste" ? "Leftovers" : "Production"} ·{" "}
-                    {weekdayName(t.date)} {formatShort(t.date)}
-                  </strong>
-                  <span>{ageLabel(t.ageDays)}</span>
-                </div>
-                {t.ageDays > 2 && <span className="pill late">Late</span>}
-                <Icon name="chevron" size={18} className="chev" />
+      {/* Standing, not dismissable. It disappears by being done. */}
+      {tasks.length > 0 ? (
+        <section className="waiting" aria-label="Owed">
+          <div className="waiting-head">
+            <span className="eyebrow accent">Owed</span>
+            <span className="count num">{tasks.length}</span>
+            <span className="spacer" />
+            <span className="hint-inline">oldest first</span>
+          </div>
+          {tasks.map((t) => {
+            const { what, when } = taskLabel(t, today);
+            return (
+              <button className="waiting-row" key={`${t.date}-${t.kind}`} onClick={() => onOpen(t)}>
+                <Icon name={t.kind === "waste" ? "trash" : "list"} size={18} className="ico" />
+                <span className="who"><strong>{what}</strong> <span>· {when}</span></span>
+                {t.ageDays > 2
+                  ? <span className="tag late">{t.ageDays} days late</span>
+                  : t.ageDays > 0 && <span className="tag">{ageLabel(t.ageDays)}</span>}
+                <Icon name="chevron" size={16} className="chev" />
               </button>
-            ))}
+            );
+          })}
+        </section>
+      ) : (
+        <section className="waiting done" aria-label="Nothing owed">
+          <div className="waiting-head">
+            <Icon name="check" size={16} className="ico ok" />
+            <span className="eyebrow">All caught up</span>
           </div>
-        </div>
+          <p className="hint-inline">Today's production is in and every past day has been counted.</p>
+        </section>
       )}
 
-      {summary && (
-        <div className="card">
-          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", gap: 12 }}>
-            <div className="eyebrow">Last recorded</div>
-            <div className="num" style={{ fontSize: 12, color: "var(--text-secondary)" }}>
-              {weekdayName(summary.date).slice(0, 3)} {formatShort(summary.date)}
-              {summary.ageDays > 1 ? ` · −${summary.ageDays}d` : summary.ageDays === 1 ? " · yesterday" : ""}
-            </div>
-          </div>
-          <div className="stats" style={{ marginTop: 16 }}>
-            <div className="stat"><div className="label">made</div>
-              <div className="value">{summary.made}</div></div>
-            <div className={`stat${summary.wasted !== null ? " accent" : ""}`}>
-              <div className="label">left over</div>
-              <div className="value">{summary.wasted ?? "—"}</div></div>
-            <div className="stat"><div className="label">sold out</div>
-              <div className="value">{summary.soldOut ?? "—"}</div></div>
-          </div>
-          {summary.wasted === null && (
-            <p className="hint" style={{ marginTop: 12 }}>Leftovers not counted yet — that's the task above.</p>
-          )}
-          {known.length >= 3 && (
-            <div style={{ marginTop: 16, paddingTop: 12, borderTop: "1px solid var(--line)" }}>
-              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", marginBottom: 6 }}>
-                <span className="hint" style={{ fontSize: 12, color: "var(--text-secondary)" }}>Left over, last 14 days</span>
-                <span className="num" style={{ fontSize: 12, fontWeight: 600 }}>avg {trendAvg}</span>
-              </div>
-              <Sparkline values={summary.trend} width={330} height={40} className="trend-spark" />
-            </div>
-          )}
-          {summary.ageDays > 1 && (
-            <p className="hint" style={{ marginTop: 12 }}>
-              Nothing has been entered since.
-            </p>
+      <nav className="tiles" aria-label="Everything">
+        <Tile icon="list" label="Make"
+              sub={owedMake ? "today's list" : todayStat?.made ? `${todayStat.made} made today` : "any day"}
+              tone={owedMake ? "owed" : "ok"} onClick={() => onGo("make")} />
+        <Tile icon="trash" label="Count"
+              sub={owedCounts ? `${owedCounts} ${owedCounts === 1 ? "day" : "days"} owed` : "all counted"}
+              tone={owedCounts ? "owed" : "ok"} onClick={() => onGo("count")} />
+        <Tile icon="calendar" label="Calendar" sub="any day" onClick={() => onGo("history")} />
+        <Tile icon="chart" label="Reports" sub="waste · sell-outs" onClick={() => onGo("history")} />
+        <Tile icon="clock" label="Usual amounts" sub="per weekday" onClick={() => onGo("templates")} />
+        <Tile icon="settings" label="Menu & costs" sub={`${itemCount} items`} onClick={() => onGo("items")} />
+        <Tile icon="cloud" label="Weather"
+              sub={weatherOn ? `ZIP ${settings.location!.zip} · on` : "not set up"}
+              onClick={() => onGo("weather")} />
+        <Tile icon="upload" label="Sync & backup" sub={sync.label}
+              tone={sync.live ? undefined : "owed"} onClick={() => onGo("cloud")} />
+        <Tile icon="search" label="Sheet check" sub="vs paper sheet" onClick={() => onGo("reconcile")} />
+      </nav>
+
+      <section className="card week-card" aria-label="Left over, last 7 days">
+        <div className="head-row">
+          <div className="eyebrow">Left over · last 7 days</div>
+          {trendAvg !== null && (
+            <span className="hint-inline">
+              avg <strong className="num">{trendAvg}</strong>/day
+              {costAvg !== null && costAvg > 0 && <> · <strong className="num">${Math.round(costAvg)}</strong>/day</>}
+            </span>
           )}
         </div>
+        <div className="week">
+          {week.map((d) => {
+            const needs = d.needsWaste || d.needsProduction;
+            return (
+              <button key={d.date}
+                      className={[
+                        "week-day", `p-${d.phase}`,
+                        needs ? "needs" : "",
+                        d.date === today ? "is-today" : "",
+                      ].filter(Boolean).join(" ")}
+                      onClick={() => onPickDay(d.date)}
+                      aria-label={`${weekdayName(d.date)} ${formatShort(d.date)}`}>
+                <span className="wd">{weekdayName(d.date).slice(0, 1)} {Number(d.date.slice(-2))}</span>
+                {/* "?" means never counted, which is a fault. Today is not a
+                    fault -- its leftovers are still in the case. */}
+                <span className="wv num">
+                  {d.phase === "outage" ? "—"
+                    : d.wasted !== null ? d.wasted
+                    : d.date === today ? "today"
+                    : d.phase === "open" ? "?" : ""}
+                </span>
+              </button>
+            );
+          })}
+        </div>
+      </section>
+
+      {known.length >= 3 && summary && (
+        <section className="card" aria-label="Left over, last 14 days">
+          <div className="head-row">
+            <div className="eyebrow">Left over · last 14 days</div>
+            <span className="hint-inline">gaps = never counted</span>
+          </div>
+          <Sparkline values={summary.trend} width={330} height={40} className="trend-spark" />
+          {costAvg !== null && costAvg > 0 && (
+            <>
+              <div className="head-row" style={{ marginTop: 12 }}>
+                <div className="eyebrow">What it cost</div>
+              </div>
+              <Sparkline values={summary.costTrend} width={330} height={40}
+                         className="trend-spark cost" hot />
+            </>
+          )}
+        </section>
       )}
     </div>
   );

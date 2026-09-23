@@ -19,14 +19,22 @@ import { toObservations } from "../lib/model";
 import * as store from "../lib/store";
 import type { Item } from "../lib/types";
 import { Icon } from "../components/Icon";
+import type { WeatherEffect } from "../lib/weatherEffect";
+import { WeatherBlock } from "../components/WeatherBlock";
 
 interface Props {
+  /** Null until a location is set and some history has been matched. */
+  weather: WeatherEffect | null;
   today: BizDate;
   items: Item[];
-  onBack: () => void;
-  onSettings: () => void;
-  onCloud: () => void;
-  onReconcile: () => void;
+  onBack?: () => void;
+  onSettings?: () => void;
+  onCloud?: () => void;
+  onWeather?: () => void;
+  onReconcile?: () => void;
+  /** Drawn inside History: no header of its own, and no "More" links --
+   *  everything they pointed at now lives on Setup. */
+  embedded?: boolean;
 }
 
 const RANGES = [
@@ -35,8 +43,8 @@ const RANGES = [
   { label: "90 days", days: 90 },
 ];
 
-export function Insights({
-  today, items, onBack, onSettings, onCloud, onReconcile,
+export function Insights({ weather,
+  today, items, onBack, onSettings, onCloud, onWeather, onReconcile, embedded = false,
 }: Props) {
   const [entries, setEntries] = useState<Awaited<ReturnType<typeof store.getAllEntries>>>([]);
   const [days, setDays] = useState(30);
@@ -139,10 +147,12 @@ export function Insights({
   if (!entries.length) {
     return (
       <div>
+        {!embedded && (
         <header className="bar">
           <button className="ghost" onClick={onBack} aria-label="Back"><Icon name="back" size={20} /></button>
           <h1>Insights</h1>
         </header>
+        )}
         <div className="card">
           <h2>Nothing to show yet</h2>
           <p className="hint">
@@ -150,6 +160,7 @@ export function Insights({
           </p>
         </div>
 
+      {!embedded && (
       <div className="card">
         <h2>More</h2>
         <div className="actions">
@@ -157,15 +168,20 @@ export function Insights({
           <button className="ghost" onClick={onCloud}>Cloud sync</button>
         </div>
         <div className="actions">
+          <button className="ghost" onClick={onWeather}>Weather</button>
+        </div>
+        <div className="actions">
           <button className="ghost" onClick={onReconcile}>Spreadsheet check</button>
         </div>
       </div>
+      )}
       </div>
     );
   }
 
   return (
     <div>
+      {!embedded && (
       <header className="bar">
         <h1>
           Insights
@@ -177,6 +193,7 @@ export function Insights({
           <Icon name="back" size={20} />
         </button>
       </header>
+      )}
 
       {totals.staleBy > 1 && (
         <div className="banner">
@@ -297,6 +314,8 @@ export function Insights({
         </div>
       )}
 
+      {weather && <WeatherBlock effect={weather} />}
+
       {heavy.length > 0 && (
         <div className="card">
           <h2>Worth an experiment</h2>
@@ -336,6 +355,7 @@ export function Insights({
         </div>
       </div>
 
+      {!embedded && (
       <div className="card">
         <h2>More</h2>
         <div className="actions">
@@ -343,9 +363,13 @@ export function Insights({
           <button className="ghost" onClick={onCloud}>Cloud sync</button>
         </div>
         <div className="actions">
+          <button className="ghost" onClick={onWeather}>Weather</button>
+        </div>
+        <div className="actions">
           <button className="ghost" onClick={onReconcile}>Spreadsheet check</button>
         </div>
       </div>
+      )}
     </div>
   );
 }

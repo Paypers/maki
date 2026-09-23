@@ -19,7 +19,7 @@ interface Props {
   onEditRecipe: (itemId: number) => void;
 }
 
-export function Items({ onChanged, onEditRecipe }: Props) {
+export function Items({ onBack, onChanged, onEditRecipe }: Props) {
   const [items, setItems] = useState<Item[]>([]);
   const [ingredients, setIngredients] = useState<Ingredient[]>([]);
   const [recipes, setRecipes] = useState<Recipe[]>([]);
@@ -70,7 +70,7 @@ export function Items({ onChanged, onEditRecipe }: Props) {
     <div>
       <header className="bar">
         <h1>
-          Menu
+          Menu &amp; costs
           <span className="sub">
             {visible.length} items{uncosted > 0 ? ` · ${uncosted} need a recipe` : ""}
           </span>
@@ -81,6 +81,9 @@ export function Items({ onChanged, onEditRecipe }: Props) {
             Add
           </button>
         )}
+        <button className="ghost" onClick={onBack} aria-label="Back">
+          <Icon name="back" size={20} />
+        </button>
       </header>
 
       {editing && (

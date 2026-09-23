@@ -3,6 +3,7 @@ import { createRoot } from "react-dom/client";
 import App from "./App";
 import * as cloud from "./lib/cloud";
 import * as store from "./lib/store";
+import { installUpdateWatcher } from "./lib/appUpdate";
 import "./styles.css";
 
 async function boot() {
@@ -11,6 +12,9 @@ async function boot() {
   try {
     const seed = await import("./data/seed.json");
     await store.seedIfEmpty(seed.items, seed.templates ?? [], seed.assignments ?? []);
+    // And re-apply the display order to an install that was seeded earlier.
+    // Cheap and idempotent: one meta read once the order matches.
+    await store.applySeedOrder(seed.items);
   } catch {
     /* no seed yet */
   }
@@ -20,8 +24,10 @@ async function boot() {
   // on the item list, so an install that already has the menu still picks it
   // up. Failure is silent by design -- an app that will not start because a
   // historical file is missing is worse than one that starts without history.
+  let firstRun = false;
   try {
     if (!(await store.historyImportedAt())) {
+      firstRun = true;
       const res = await fetch("/history.json", { cache: "no-store" });
       if (res.ok) await store.importHistory(await res.json());
     }
@@ -37,14 +43,33 @@ async function boot() {
   createRoot(document.getElementById("root")!).render(
     <StrictMode><App /></StrictMode>,
   );
+
+  // After the first paint, never before it: has the history file changed
+  // since it was loaded? New sheets, or old ones filled in properly, arrive
+  // this way just by opening the app. Corrections only ever replace figures
+  // that came from paper -- anything typed into the app is left alone.
+  if (!firstRun) void refreshHistory();
+}
+
+async function refreshHistory() {
+  try {
+    const res = await fetch("/history.json", { cache: "no-cache" });
+    if (!res.ok) return;
+    const file = await res.json();
+    if (!file?.generatedAt || file.generatedAt === (await store.historyVersion())) return;
+    const r = await store.importHistory(file);
+    if (r.entries || r.corrections || r.days) window.dispatchEvent(new Event("kiosk:data-changed"));
+  } catch {
+    /* offline, or no file: the next launch tries again */
+  }
 }
 
 void boot();
 
 // Offline shell. Registered after boot so a failing service worker can never
 // stop the app rendering -- the kiosk needs the screen more than the cache.
+// The watcher also handles noticing new builds, which an installed PWA cannot
+// do on its own: it has no reload button and resuming it does not re-navigate.
 if ("serviceWorker" in navigator && import.meta.env.PROD) {
-  window.addEventListener("load", () => {
-    void navigator.serviceWorker.register("/sw.js").catch(() => {});
-  });
+  window.addEventListener("load", () => installUpdateWatcher());
 }

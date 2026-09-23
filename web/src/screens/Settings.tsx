@@ -1,11 +1,14 @@
 /**
  * Settings, plus backup.
  *
- * Two of these change what the recommendation rule computes, so they are
- * labelled with what they do rather than what they are called:
+ * Four of these change what the recommendation rule computes, so they are
+ * labelled with what they do rather than what they are called. Each moves the
+ * break-even -- the chance a roll must have of selling to be worth making:
  *
- *   salvage         raises it above zero and every recommendation rises with it
- *   promo weekdays  lowers the target quantile on those days
+ *   salvage         lowers it, so every suggestion rises
+ *   labour per roll raises it, so suggestions fall
+ *   share you keep  below 100% raises it, so suggestions fall
+ *   promo weekdays  raise it on those days: each roll earns less
  *
  * Backup is here rather than buried because IndexedDB lives in one browser on
  * one phone. Until the cloud sync is connected, an export is the only thing
@@ -14,6 +17,7 @@
 
 import { useEffect, useRef, useState } from "react";
 import * as store from "../lib/store";
+import { downloadBackup } from "../lib/backup";
 import type { Settings as SettingsType } from "../lib/types";
 import { Icon } from "../components/Icon";
 
@@ -70,8 +74,9 @@ export function Settings({ onBack, onChanged }: Props) {
       const res = await fetch("/history.json", { cache: "no-store" });
       if (!res.ok) throw new Error(`not found (HTTP ${res.status})`);
       const added = await store.importHistory(await res.json());
-      setStatus(added.entries
-        ? `Loaded ${added.entries} entries across ${added.days} days.`
+      setStatus(added.entries || added.corrections || added.days
+        ? `Loaded ${added.entries} entries across ${added.days} days`
+          + (added.corrections ? `, and corrected ${added.corrections} from newer sheets.` : ".")
         : "Already loaded — nothing new to add.");
       setHistory(await store.historyImportedAt());
       const [entries, days, items] = await Promise.all(
@@ -86,16 +91,8 @@ export function Settings({ onBack, onChanged }: Props) {
   }
 
   async function doExport() {
-    const backup = await store.exportAll();
-    const blob = new Blob([JSON.stringify(backup, null, 2)],
-                          { type: "application/json" });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement("a");
-    a.href = url;
-    a.download = `kiosk-backup-${new Date().toISOString().slice(0, 10)}.json`;
-    a.click();
-    URL.revokeObjectURL(url);
-    setStatus(`Exported ${backup.entries.length} entries.`);
+    const n = await downloadBackup();
+    setStatus(`Exported ${n} entries.`);
   }
 
   async function doImport(file: File) {
@@ -137,8 +134,9 @@ export function Settings({ onBack, onChanged }: Props) {
       <div className="card">
         <h2>Promotion days</h2>
         <p className="hint">
-          Buy-2-get-1 lowers the margin per unit, so the target quantity drops
-          on these days even though volume rises.
+          Buy-2-get-1 lowers what each roll earns, so a roll needs a better
+          chance of selling to be worth making — the suggestion can drop on
+          these days even though more people buy.
         </p>
         <div className="tabs">
           {WEEKDAYS.map((label, i) => (
@@ -149,6 +147,42 @@ export function Settings({ onBack, onChanged }: Props) {
             </button>
           ))}
         </div>
+      </div>
+
+      <div className="card">
+        <h2>What a roll really costs you</h2>
+        <p className="hint">
+          The rule makes a roll when its chance of selling beats
+          <strong> cost ÷ what you keep</strong>. Both numbers below start
+          neutral because only you know them — and both matter more than
+          anything else in the rule.
+        </p>
+        <label className="field">
+          <span>Your time per roll ($)</span>
+          <input type="number" inputMode="decimal" step="0.05" min="0"
+                 value={draft.labourPerRoll}
+                 onChange={(e) => set("labourPerRoll", Math.max(0, Number(e.target.value) || 0))} />
+        </label>
+        <p className="hint">
+          Leave at <strong>0</strong> if an extra roll costs you nothing but
+          ingredients. If you would rather value your time — say $15 an hour
+          and 2 minutes a roll is <strong>0.50</strong> — enter it and the rule
+          stops suggesting rolls that only just pay.
+        </p>
+        <label className="field">
+          <span>Share of each sale you keep (%)</span>
+          <input type="number" inputMode="numeric" step="1" min="1" max="100"
+                 value={Math.round(draft.saleShare * 100)}
+                 onChange={(e) => {
+                   const v = Number(e.target.value);
+                   set("saleShare", Number.isFinite(v) && v > 0 ? Math.min(100, v) / 100 : 1);
+                 }} />
+        </label>
+        <p className="hint">
+          <strong>100</strong> if every dollar at the register is yours. If
+          ShopRite keeps a percentage, enter what is left — 75 for a 25% cut.
+          A cut like that raises the bar for every roll by about a third.
+        </p>
       </div>
 
       <div className="card">

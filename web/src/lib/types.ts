@@ -1,4 +1,5 @@
 import type { BizDate } from "./businessDay";
+import type { StoreLocation, TradingHours } from "./weather";
 
 export interface Item {
   itemId: number;
@@ -7,7 +8,24 @@ export interface Item {
   price: number | null;
   unitCost: number | null;
   sortOrder: number;
+  /**
+   * Which block of the paper prep sheet the item sits in (0, 1, 2…), so the
+   * entry screens can draw the same groups the operator reads on paper.
+   * Presentation only, like sortOrder. Absent for items the sheet does not
+   * list; they are drawn as one block after the rest.
+   */
+  sheetGroup?: number | null;
   active: boolean;
+  /**
+   * Flat promotional price, e.g. 5.99 on Wednesdays. When set it REPLACES the
+   * normal price on promo weekdays and also replaces the buy-2-get-1
+   * multiplier for this item -- a $5.99 roll sells at $5.99, not at two
+   * thirds of $5.99. That is an assumption about how the deals stack; if the
+   * store runs both together this is the line to change.
+   */
+  promoPrice?: number | null;
+  /** ISO weekdays the promo price applies. Empty or absent = never. */
+  promoWeekdays?: number[];
 }
 
 export type EntryType = "made" | "refill" | "waste";
@@ -62,6 +80,13 @@ export interface Recommendation {
   reason?: string;
   caveat?: string;
   confidence?: "low" | "medium" | "high";
+  /** chances[k-1]: the rule's estimate that roll k sells. */
+  chances?: number[];
+  /** The chance a roll needs to be worth making: cost / price. */
+  breakEven?: number | null;
+  /** The suggestion is one above the most made lately: a test roll. */
+  testing?: boolean;
+  recentMax?: number;
 }
 
 export interface QueuedMutation {
@@ -109,11 +134,39 @@ export interface Settings {
   promoMultiplier: number;
   /** Recovered per DISCARDED unit. Zero when waste is counted the morning after. */
   salvage: number;
+  /** What making one roll costs on top of its recipe, $ -- your time, if you
+   *  count it. Zero until you say otherwise: only you know what an hour is. */
+  labourPerRoll: number;
+  /** Share of each sale that reaches you, 0-1. One unless the store takes a
+   *  cut; a 25% cut is 0.75, and it raises every break-even by a third. */
+  saleShare: number;
   /** Show the model's suggestion as a delta beside your own number. */
   showSuggestions: boolean;
   kioskName: string;
   /** Dark is the design; light is for when the store lights are on. */
   theme: "system" | "dark" | "light";
+
+  // ---- weather ----
+  /** Where the kiosk is, resolved from a ZIP. Null until it is set. */
+  location: StoreLocation | null;
+  /** Local hours the kiosk trades. Weather outside these is ignored. */
+  hours: TradingHours;
+  /** Off until a location is set; the app never fetches without being asked. */
+  weatherEnabled: boolean;
+  /**
+   * Things the operator believes move their sales, which must not be
+   * credited to the weather. A checked factor holds its days out of the
+   * weather baseline rather than trying to model them -- with one kiosk and
+   * one year there is not enough data to estimate them, but there is enough
+   * to stop them contaminating something else.
+   */
+  factors: {
+    paydays: boolean;       // 1st and 15th
+    schoolCalendar: boolean;
+    storeEvents: boolean;
+  };
+  /** Dates the operator marked as unusual, held out of the baseline. */
+  unusualDates: string[];
 }
 
 export const DEFAULT_SETTINGS: Settings = {
@@ -121,7 +174,16 @@ export const DEFAULT_SETTINGS: Settings = {
   promoWeekdays: [3],
   promoMultiplier: 2 / 3,
   salvage: 0,
+  labourPerRoll: 0,
+  // The middle man takes 20% of all sales (operator, 2026-09-23). A default
+  // rather than a hard-coded fact: it changes in Settings if the deal does.
+  saleShare: 0.8,
   showSuggestions: true,
   theme: "system",
+  location: null,
+  hours: { open: 8, close: 20 },
+  weatherEnabled: false,
+  factors: { paydays: false, schoolCalendar: false, storeEvents: false },
+  unusualDates: [],
   kioskName: "Kiosk",
 };

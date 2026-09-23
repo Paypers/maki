@@ -5,12 +5,17 @@
   "type": "module",
   "scripts": {
     "dev": "vite",
-    "build": "tsc -b && vite build",
+    "build": "tsc -b && vite build && node scripts/stamp-sw.mjs dist",
+    "deploy": "npm run build && node scripts/deploy.mjs",
     "preview": "vite preview",
     "test": "vitest run",
     "shots": "vite build && (vite preview --port 4173 --strictPort & sleep 3 && node shots.mjs shots)",
     "shots:real": "node realshots.mjs",
-    "flow": "node flowcheck.mjs"
+    "flow": "node flowcheck.mjs",
+    "wx": "node wxagree.mjs",
+    "wx:shots": "vite build && node wxshot.mjs",
+    "wx:verify": "node wxverify.mjs",
+    "savefail": "node savefail.mjs"
   },
   "dependencies": {
     "react": "^18.3.1",

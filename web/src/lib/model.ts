@@ -1,35 +1,63 @@
 /**
- * Recommendations for the morning screen.
+ * Recommendations for the morning screen: the per-roll rule.
  *
- * This is a deliberate reimplementation of the Python `SameWeekdayQuantile`
- * policy, so the app can produce a recommendation with no server and no
- * connection. The two implementations must agree exactly; `model.test.ts`
- * checks that against fixtures shared with the Python suite. If they ever
- * diverge, the app is showing a number the backtest never scored.
+ * For roll k of an item, estimate the chance it sells, S(k), and suggest it
+ * when S(k) clears its break-even, cost / price. That is the newsvendor
+ * critical fractile read one roll at a time: roll k earns its price if it
+ * sells and costs its cost either way, so it pays exactly when
+ * price * S(k) >= cost.
  *
- * As of Phase 4 no fitted model beat this rule out of sample, so this rule IS
- * the recommendation and the screen says so. When a model earns its place it
- * arrives from the server and slots in beside this as a fallback.
+ * S(k) comes from the record with sell-outs read as "at least", never as
+ * "exactly" (a weighted Kaplan-Meier product: the chance the next roll sells,
+ * given the ones before it did). A roll above the most made lately is a test,
+ * made only when that most sold out and the estimate still clears break-even,
+ * and never more than one above it.
  *
- * Measured: -14.1% realised cost against the naive same-weekday mean, over 89
- * walk-forward days. Still well behind the operator's own judgement, which the
- * screen also says.
+ * This is a port of `analysis/rollchance.py`, which carries the derivation,
+ * the references and the evidence. The two must agree exactly:
+ * `model.test.ts` replays the Python-generated cases in
+ * `fixtures/roll_chance_cases.json` through this file.
+ *
+ * Measured on Jun 5 - Sep 21 after the middle man's 20% (tools/compare_rules.py):
+ * about level with the operator's own numbers on profit, and $6-10 a day ahead
+ * of the old same-weekday quantile, which read every sell-out as the most that
+ * could have sold.
  */
 
 import type { BizDate } from "./businessDay";
-import { isoWeekday, weekdayName } from "./businessDay";
+import { isoWeekday } from "./businessDay";
 import type { Entry, Item, Recommendation } from "./types";
 
-export const MODEL_NAME = "same_weekday_quantile";
-export const MODEL_VERSION = "1.0.0-w8-min4-f1";
-
-const WINDOW = 8;
-const MIN_OBSERVATIONS = 4;
+// Settings. Every one mirrors analysis/rollchance.py -- change them there,
+// regenerate the shared cases, and model.test.ts says what to change here.
+/** Weight of a day on a different weekday from the one being planned. */
+export const OTHER_WEEKDAY = 0.3;
+/** A day this many weeks old counts half as much as yesterday. */
+export const HALF_LIFE_WEEKS = 3;
+/** Chance the next roll sells, given the ones before it did, where the record
+ *  has little or nothing on it. Measured at 57-58%; the rule assumes less. */
+export const PRIOR_CONTINUATION = 0.5;
+/** Days of evidence that is worth, for a roll made only some days... */
+export const PRIOR_STRENGTH = 5;
+/** ...and for a roll made on nearly every day, whose record is fair. */
+export const PRIOR_STRENGTH_DAILY = 1;
+export const DAILY_SHARE = 0.9;
+/** A week of an item on record before the rule overrides your own plan. */
+export const MIN_DAYS = 7;
+/** At most this many rolls above the most made recently. */
+export const STEP = 1;
+const RECENT_DAYS = 7;
+const RECENT_SAME_WEEKDAYS = 2;
+/** An item still on the menu is stocked, not delisted by a calculation. */
+export const FLOOR = 1;
+/** Recent days behind the sell-out count in the reasons and confidence. */
 const RECENT = 10;
-/** An item still on the menu is stocked, not delisted by a calculation. Kept
- *  because it measurably helps (-14.1% vs -10.2% against the naive baseline),
- *  and mirrored from the Python policy so both score the same rule. */
-const FLOOR = 1;
+
+const fmt = (x: number) => String(Number(x.toPrecision(12)));
+export const MODEL_NAME = "roll_chance";
+export const MODEL_VERSION =
+  `2.0.0-o${fmt(OTHER_WEEKDAY)}-h${fmt(HALF_LIFE_WEEKS)}-p${fmt(PRIOR_CONTINUATION)}` +
+  `-m${fmt(PRIOR_STRENGTH)}/${fmt(PRIOR_STRENGTH_DAILY)}@${fmt(DAILY_SHARE)}-s${STEP}-f${FLOOR}`;
 
 /** One item-day as the model sees it. Demand is censored when nothing was left. */
 export interface DayObservation {
@@ -81,18 +109,52 @@ export interface RatioOptions {
   promoWeekdays?: number[];
   promoMultiplier?: number;
   salvage?: number;
+  /** Cost of making one roll on top of its recipe -- time, if you count it. */
+  labourPerRoll?: number;
+  /** Share of each sale that reaches you. 1 unless the store takes a cut. */
+  saleShare?: number;
+}
+
+/**
+ * What a unit of this item actually sells for on this date.
+ *
+ * Two kinds of promotion, and they do NOT stack. A flat promo price on the
+ * item wins outright: a roll marked $5.99 on Wednesday sells at $5.99, not
+ * at two thirds of it. The store-wide buy-2-get-1 multiplier then applies
+ * only to items without their own promo price.
+ *
+ * This is the single point where a price becomes a target quantity, because
+ * the critical ratio is (p - c) / p: drop the price and the ratio falls, so
+ * the model makes fewer of a discounted item, not more. That is correct and
+ * frequently surprising -- a deeper discount on the same cost is a thinner
+ * margin, and a thinner margin is less tolerance for binning one.
+ */
+export function effectivePrice(
+  item: Item, date: BizDate,
+  promoWeekdays: number[] = [3], promoMultiplier = 2 / 3,
+): number | null {
+  if (item.price === null) return null;
+  const wd = isoWeekday(date);
+  if (item.promoPrice != null && item.promoPrice > 0
+      && (item.promoWeekdays ?? []).includes(wd)) {
+    return item.promoPrice;
+  }
+  return promoWeekdays.includes(wd) ? item.price * promoMultiplier : item.price;
 }
 
 /**
  * Critical ratio.
  *
- *   c_u = effective price - unit cost      (margin forgone on a lost sale)
- *   c_o = unit cost - salvage              (sunk into a unit that was binned)
+ *   p   = effective price x the share of it you keep
+ *   c   = unit cost + labour per roll
+ *   c_u = p - c                            (margin forgone on a lost sale)
+ *   c_o = c - salvage                      (sunk into a unit that was binned)
  *   tau = c_u / (c_u + c_o) = (p - c) / (p - salvage)
  *
  * With salvage at zero -- waste counted the morning after, so anything that
  * cleared at markdown is already inside `sold` -- this collapses to the gross
- * margin ratio, 1 - cost/price.
+ * margin ratio, 1 - cost/price. Break-even, the chance a roll must have to be
+ * worth making, is 1 - tau.
  */
 export function criticalRatio(item: Item, date: BizDate,
                               opts: RatioOptions | number[] = {}): number | null {
@@ -102,13 +164,17 @@ export function criticalRatio(item: Item, date: BizDate,
   const promoWeekdays = o.promoWeekdays ?? [3];
   const promoMultiplier = o.promoMultiplier ?? 2 / 3;
   const salvage = o.salvage ?? 0;
+  const labour = o.labourPerRoll ?? 0;
+  const share = o.saleShare ?? 1;
 
   if (item.price === null || item.unitCost === null || item.price <= 0) return null;
-  const price = promoWeekdays.includes(isoWeekday(date))
-    ? item.price * promoMultiplier : item.price;
+  const listed = effectivePrice(item, date, promoWeekdays, promoMultiplier);
+  if (listed === null || listed <= 0) return null;
+  const price = listed * share;
+  const cost = item.unitCost + labour;
 
-  const cu = price - item.unitCost;
-  const co = item.unitCost - salvage;
+  const cu = price - cost;
+  const co = cost - salvage;
   // co <= 0 means binning a unit costs nothing, the ratio is 1, and the model
   // says make unlimited stock. That is a real answer to the wrong question, so
   // refuse rather than hand back a number that would be acted on.
@@ -116,18 +182,151 @@ export function criticalRatio(item: Item, date: BizDate,
   return cu / (cu + co);
 }
 
-/** Linear-interpolated empirical quantile. Must match the Python helper. */
-export function empiricalQuantile(sorted: number[], q: number): number {
-  if (!sorted.length) return NaN;
-  if (sorted.length === 1) return sorted[0];
-  const pos = q * (sorted.length - 1);
-  const lo = Math.floor(pos);
-  const hi = Math.min(lo + 1, sorted.length - 1);
-  const frac = pos - lo;
-  return sorted[lo] * (1 - frac) + sorted[hi] * frac;
+// ------------------------------------------------------------ the ladder --
+
+/** Everything the rule knows about one item on one day. */
+export interface Ladder {
+  /** chances[k-1] = estimated chance roll k sells. */
+  chances: number[];
+  /** Per roll: [weighted days it was a real test, of which it sold]. */
+  evidence: [number, number][];
+  breakEven: number | null;
+  quantity: number | null;
+  /** The most made of this item recently; above it is untested. */
+  recentMax: number;
+  /** The suggestion goes above recentMax: a deliberate test roll. */
+  testing: boolean;
+  days: number;
 }
 
-const roundUp = (x: number) => Math.max(0, Math.floor(x + 0.5));
+const DAY_MS = 86_400_000;
+function dayNumber(date: BizDate): number {
+  const [y, m, d] = date.split("-").map(Number);
+  return Date.UTC(y, m - 1, d) / DAY_MS;
+}
+
+/** How much each past day counts toward `date`. */
+export function weights(date: BizDate, rows: DayObservation[]): number[] {
+  const wd = isoWeekday(date);
+  const t = dayNumber(date);
+  return rows.map((o) => {
+    const recency = Math.pow(0.5, (t - dayNumber(o.date)) / (7 * HALF_LIFE_WEEKS));
+    return recency * (isoWeekday(o.date) === wd ? 1 : OTHER_WEEKDAY);
+  });
+}
+
+/** S(1..top) by the shrunk, weighted product-limit estimator. */
+export function chances(rows: DayObservation[], w: number[], top: number):
+    { chances: number[]; evidence: [number, number][] } {
+  let total = 0;
+  for (const x of w) total += x;
+  let s = 1;
+  const out: number[] = [];
+  const evidence: [number, number][] = [];
+  for (let j = 0; j < top; j++) {
+    let made = 0, tried = 0, sold = 0;
+    for (let i = 0; i < rows.length; i++) {
+      const o = rows[i];
+      if (o.supply >= j + 1) {
+        made += w[i];
+        // Roll j+1 existed and the j before it all sold: a real test.
+        if (o.sold >= j) {
+          tried += w[i];
+          if (o.sold >= j + 1) sold += w[i];
+        }
+      }
+    }
+    const m = made >= DAILY_SHARE * total ? PRIOR_STRENGTH_DAILY : PRIOR_STRENGTH;
+    s *= (sold + m * PRIOR_CONTINUATION) / (tried + m);
+    out.push(s);
+    evidence.push([tried, sold]);
+  }
+  return { chances: out, evidence };
+}
+
+function recentDays(date: BizDate, rows: DayObservation[]): DayObservation[] {
+  const wd = isoWeekday(date);
+  const same = rows.filter((o) => isoWeekday(o.date) === wd).slice(-RECENT_SAME_WEEKDAYS);
+  return [...rows.slice(-RECENT_DAYS), ...same];
+}
+
+export function recentMax(date: BizDate, rows: DayObservation[]): number {
+  return Math.trunc(Math.max(0, ...recentDays(date, rows).map((o) => o.supply)));
+}
+
+/** Only a sell-out at the most you made lately makes one more worth testing. */
+export function hitTheCeiling(date: BizDate, rows: DayObservation[], ceiling: number): boolean {
+  return recentDays(date, rows).some((o) => o.censored && o.supply > 0 && o.supply >= ceiling);
+}
+
+/** The rule for one item. `rows` strictly before `date`, oldest first. */
+export function ladderFor(date: BizDate, rows: DayObservation[],
+                          breakEven: number | null): Ladder {
+  if (rows.length < MIN_DAYS) {
+    return { chances: [], evidence: [], breakEven, quantity: null, recentMax: 0,
+             testing: false, days: rows.length };
+  }
+  const cap = recentMax(date, rows);
+  // Every roll the record has touched, plus the ones the cap could reach.
+  const top = Math.max(cap + STEP + 1, ...rows.map((o) => Math.trunc(o.supply) + 1));
+  const { chances: s, evidence } = chances(rows, weights(date, rows), top);
+  if (breakEven === null) {
+    return { chances: s, evidence, breakEven, quantity: null, recentMax: cap,
+             testing: false, days: rows.length };
+  }
+  let q = s.filter((p) => p >= breakEven).length;
+  q = Math.min(q, cap + (hitTheCeiling(date, rows, cap) ? STEP : 0));
+  if (q < FLOOR && rows.slice(-10).some((o) => o.supply > 0)) q = FLOOR;
+  return { chances: s, evidence, breakEven, quantity: q, recentMax: cap,
+           testing: q > cap, days: rows.length };
+}
+
+/**
+ * Chance roll k sells. Past the ladder nothing was ever made, so each further
+ * roll gets exactly the prior: half the one before. That is what `chances`
+ * would compute there, not an approximation of it.
+ */
+export function chanceOf(chancesList: readonly number[], k: number): number {
+  if (k <= 0) return 1;
+  if (!chancesList.length) return 0;
+  if (k <= chancesList.length) return chancesList[k - 1];
+  return chancesList[chancesList.length - 1]
+    * Math.pow(PRIOR_CONTINUATION, k - chancesList.length);
+}
+
+export function ordinal(n: number): string {
+  const suffix = n % 100 >= 10 && n % 100 <= 20 ? "th"
+    : ({ 1: "st", 2: "nd", 3: "rd" } as Record<number, string>)[n % 10] ?? "th";
+  return `${n}${suffix}`;
+}
+
+export const pct = (p: number) => `${Math.round(100 * p)}%`;
+
+/**
+ * Why the rule and your number differ, in the rule's own terms: the chance
+ * of the roll in dispute against the chance it needs to pay for itself.
+ *   rule above you:  "a 4th would sell 41% of days · needs 23%"
+ *   a test roll:     "test a 4th: would sell 44% · needs 23%"
+ *   rule below you:  "your 4th sells 12% of days · needs 23%"
+ * Written as a sentence, not a code: it wraps to two lines in the narrow
+ * column, and two readable lines beat one that has to be deciphered.
+ * Null when you agree, or when the rule has no opinion.
+ */
+export function explainRoll(rec: Recommendation, yours: number): string | null {
+  if (rec.modelQty === null || !rec.chances?.length || rec.breakEven == null) return null;
+  if (rec.modelQty === yours) return null;
+  const needs = `needs ${pct(rec.breakEven)}`;
+  if (rec.modelQty > yours) {
+    const k = yours + 1;
+    const p = pct(chanceOf(rec.chances, k));
+    return rec.testing && rec.modelQty === k
+      ? `test a ${ordinal(k)}: would sell ${p} · ${needs}`
+      : `a ${ordinal(k)} would sell ${p} of days · ${needs}`;
+  }
+  return `your ${ordinal(yours)} sells ${pct(chanceOf(rec.chances, yours))} of days · ${needs}`;
+}
+
+// ------------------------------------------------------------- reasons --
 
 function confidence(nWeekday: number, selloutRate: number, fallback: boolean) {
   if (fallback || nWeekday < 3) return "low" as const;
@@ -136,37 +335,26 @@ function confidence(nWeekday: number, selloutRate: number, fallback: boolean) {
   return "medium" as const;
 }
 
-function describe(
-  date: BizDate, recent: DayObservation[], weekdayObs: DayObservation[],
-  promo: boolean, fallback: boolean,
-): { reason: string; caveat?: string } {
-  // Abbreviated: this renders on every one of forty rows in a 340px column,
-  // and "Wednesday" spends nine of those characters saying what the header
-  // above already says.
-  const day = weekdayName(date).slice(0, 3);
-  const sellouts = recent.filter((o) => o.censored).length;
-  const leftovers = recent.length - sellouts;
-  const heavy = recent.length > 0 && sellouts / recent.length >= 0.6;
-
-  if (fallback) {
-    return { reason: `too few ${day}s on record — using your plan`,
-             caveat: "fewer than 4 comparable days on record" };
+/** Short -- this renders on one line of a 340px column. */
+function describe(recent: DayObservation[], lad: Ladder, fallback: boolean):
+    { reason: string; caveat?: string } {
+  if (fallback || lad.quantity === null || lad.breakEven === null) {
+    return { reason: "under a week on record — your plan",
+             caveat: `fewer than ${MIN_DAYS} days on record` };
   }
-  if (recent.length && sellouts >= Math.max(3, Math.floor(0.6 * recent.length))) {
-    // No "nudging up": the arrow beside this line already says the direction,
-    // and repeating it costs the room the numbers need.
-    return { reason: `sold out ${sellouts} of last ${recent.length}`,
-             caveat: heavy ? "true demand is higher than anything recorded — this is a floor" : undefined };
+  const q = lad.quantity;
+  const needs = `needs ${pct(lad.breakEven)}`;
+  const at = (k: number) => pct(chanceOf(lad.chances, k));
+  if (lad.testing) {
+    return { reason: `testing a ${ordinal(q)} · ~${at(q)}, ${needs}`,
+             caveat: "one more than lately — a test roll" };
   }
+  const leftovers = recent.filter((o) => !o.censored).length;
   if (recent.length && leftovers >= Math.max(3, Math.floor(0.7 * recent.length))) {
     const wasted = recent.reduce((s, o) => s + Math.max(0, o.supply - o.sold), 0);
-    return { reason: `${wasted} left over in ${recent.length} days` };
+    return { reason: `${wasted} left in ${recent.length} days · ${ordinal(q + 1)} ~${at(q + 1)}` };
   }
-  if (weekdayObs.length) {
-    const typical = weekdayObs.reduce((s, o) => s + o.sold, 0) / weekdayObs.length;
-    return { reason: `${day} sells about ${Math.round(typical)}${promo ? ", promo" : ""}` };
-  }
-  return { reason: `steady ${day}` };
+  return { reason: `${ordinal(q)} ~${at(q)}, ${ordinal(q + 1)} ~${at(q + 1)} · ${needs}` };
 }
 
 export interface RecommendationSet {
@@ -177,18 +365,35 @@ export interface RecommendationSet {
   notes: string[];
 }
 
+export interface RecommendOptions extends RatioOptions {
+  /**
+   * The days whose leftovers were actually counted. When given, every other
+   * day is left out of the rule entirely.
+   *
+   * An uncounted day has no waste entries, and toObservations reads "no
+   * waste" as "sold out, sold everything" -- so without this, a day nobody
+   * counted enters the rule as the best day that item ever had. A 74-unit
+   * Tuesday left uncounted inflated every Tuesday suggestion after it. Its
+   * sales are unknown, so it is not an observation at all: absence is not
+   * zero, and it is not a sell-out either.
+   */
+  counted?: ReadonlySet<BizDate>;
+}
+
 export function recommendFor(
   date: BizDate,
   items: Item[],
   template: { quantities: Record<number, number> } | null,
   entries: Entry[],
-  opts: RatioOptions | number[] = {},
+  opts: RecommendOptions | number[] = {},
 ): RecommendationSet {
-  const ratio: RatioOptions = Array.isArray(opts) ? { promoWeekdays: opts } : opts;
+  const ratio: RecommendOptions = Array.isArray(opts) ? { promoWeekdays: opts } : opts;
   const promoWeekdays = ratio.promoWeekdays ?? [3];
+  const counted = ratio.counted;
   // Strictly before the planned day. A recommendation built with same-day data
   // would look excellent and be worthless.
-  const observations = toObservations(entries).filter((o) => o.date < date);
+  const observations = toObservations(entries)
+    .filter((o) => o.date < date && (!counted || counted.has(o.date)));
   const wd = isoWeekday(date);
   const promo = promoWeekdays.includes(wd);
 
@@ -204,28 +409,23 @@ export function recommendFor(
 
   for (const item of items) {
     const all = byItem.get(item.itemId) ?? [];
-    const weekdayObs = all.filter((o) => isoWeekday(o.date) === wd).slice(-WINDOW);
     const recent = all.slice(-RECENT);
+    const sameWeekday = all.filter((o) => isoWeekday(o.date) === wd);
     const selloutRate = recent.length
       ? recent.filter((o) => o.censored).length / recent.length : 0;
-    const baselineWindow = all.filter((o) => isoWeekday(o.date) === wd).slice(-4);
     const tau = criticalRatio(item, date, ratio);
+    const lad = ladderFor(date, all, tau === null ? null : 1 - tau);
 
+    // The naive same-weekday mean, kept visible beside every suggestion so a
+    // number can always be checked against the dumbest alternative.
+    const baselineWindow = sameWeekday.slice(-4);
     const baselineQty = baselineWindow.length >= 2
-      ? roundUp(baselineWindow.reduce((s, o) => s + o.sold, 0) / baselineWindow.length)
+      ? Math.max(0, Math.floor(baselineWindow.reduce((s, o) => s + o.sold, 0)
+          / baselineWindow.length + 0.5))
       : null;
 
-    let modelQty: number | null = null;
-    if (weekdayObs.length >= MIN_OBSERVATIONS && tau !== null) {
-      const sorted = weekdayObs.map((o) => o.sold).sort((a, b) => a - b);
-      modelQty = roundUp(empiricalQuantile(sorted, tau));
-      // Only floor items actually being made; something genuinely at zero
-      // across its recent history stays at zero.
-      if (modelQty < FLOOR && weekdayObs.some((o) => o.supply > 0)) modelQty = FLOOR;
-    }
-
-    const fallback = modelQty === null;
-    const { reason, caveat } = describe(date, recent, weekdayObs, promo, fallback);
+    const fallback = lad.quantity === null;
+    const { reason, caveat } = describe(recent, lad, fallback);
     if (selloutRate >= 0.6) heavy.push(item.displayName);
 
     recommendations.push({
@@ -233,7 +433,7 @@ export function recommendFor(
       baselineQty: template?.quantities[item.itemId] ?? 0,
       // With no usable history the operator's own plan beats a rule fitted to
       // almost nothing, so no delta is shown at all.
-      modelQty: fallback ? null : modelQty,
+      modelQty: lad.quantity,
       naiveBaselineQty: baselineQty,
       modelName: MODEL_NAME,
       modelVersion: MODEL_VERSION,
@@ -241,30 +441,31 @@ export function recommendFor(
       fallbackReason: fallback ? caveat : undefined,
       reason,
       caveat,
-      confidence: confidence(weekdayObs.length, selloutRate, fallback),
+      confidence: confidence(sameWeekday.slice(-8).length, selloutRate, fallback),
+      chances: lad.chances,
+      breakEven: lad.breakEven,
+      testing: lad.testing,
+      recentMax: lad.recentMax,
     });
   }
 
   const notes: string[] = [];
   if (promo) {
-    notes.push("Buy-2-get-1 today: margin per unit is lower, so the target drops even as volume rises.");
+    notes.push("Buy-2-get-1 today: each roll earns less, so it needs a better chance of selling to be worth making.");
   }
   if (heavy.length) {
     notes.push(
       `${heavy.length} item${heavy.length > 1 ? "s" : ""} sell out most days (${heavy.slice(0, 3).join(", ")}${heavy.length > 3 ? "…" : ""}). ` +
-      "Their real demand has never been observed, so those numbers are floors, not estimates.",
+      "Their real demand is higher than the record shows; the rule estimates it and tests one extra roll at a time.",
     );
   }
+  notes.push(
+    "A roll is suggested when its chance of selling beats its break-even: cost ÷ price. " +
+    "Sell-outs count as “at least”, recent weeks and the same weekday count most, " +
+    "and a roll above your usual is tried only after the usual sold out.",
+  );
 
-  return {
-    date,
-    recommendations,
-    degraded: true,
-    degradedReason:
-      "No fitted model yet — this is the trailing same-weekday quantile, " +
-      "which beat the naive baseline by 14% in backtest but is still behind your own judgement.",
-    notes,
-  };
+  return { date, recommendations, degraded: false, degradedReason: null, notes };
 }
 
 /** What shows beside your number. Null means no opinion, never zero. */

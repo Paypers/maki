@@ -12,14 +12,17 @@ import { useEffect, useMemo, useState } from "react";
 import type { BizDate } from "../lib/businessDay";
 import { formatShort, weekdayName } from "../lib/businessDay";
 import { isoWeekday } from "../lib/businessDay";
-import { delta, recommendFor, toObservations } from "../lib/model";
+import { delta, explainRoll, recommendFor, toObservations } from "../lib/model";
 import * as store from "../lib/store";
 import type {
   Entry, Item, Settings, Template, TemplateAssignment,
 } from "../lib/types";
+import { describeSaveError } from "../lib/saveError";
 import { Icon } from "../components/Icon";
-import { Sparkline } from "../components/Sparkline";
+import { ScreenHeader } from "../components/ScreenHeader";
 import { QuantityList, type RowSpec } from "./QuantityList";
+import { WET_INCHES, describe as describeWeather, type DayWeather } from "../lib/weather";
+import { adviseFor, planFactor, scaleQuantities, type WeatherEffect } from "../lib/weatherEffect";
 
 interface Props {
   date: BizDate;
@@ -29,17 +32,28 @@ interface Props {
   settings: Settings;
   onDone: () => void;
   onEditTemplate: () => void;
-  onBack: () => void;
+  /** Today's weather, if a location is set and it has been fetched. */
+  weather?: DayWeather;
+  /** What the record says weather does here. Null until there is enough. */
+  weatherEffect: WeatherEffect | null;
+  /** Days whose leftovers were counted. Every other day is kept out of the
+   *  rule -- an uncounted day reads as a sell-out otherwise. */
+  counted: ReadonlySet<BizDate>;
 }
 
-const SPARK_DAYS = 10;
+/** Same-weekday days the per-item record line looks back over. */
+const RECORD_DAYS = 8;
 
 export function Production({
-  date, items, templates, assignments, settings, onDone, onEditTemplate, onBack,
+  date, items, templates, assignments, settings, onDone, onEditTemplate,
+  weather, weatherEffect, counted,
 }: Props) {
+  /** The operator has to ask for the weather adjustment; it never self-applies. */
+  const [applyWeather, setApplyWeather] = useState(false);
   const [qty, setQty] = useState<Record<number, number>>({});
   const [touched, setTouched] = useState<Set<number>>(new Set());
   const [saving, setSaving] = useState(false);
+  const [problem, setProblem] = useState<string | null>(null);
   const [loaded, setLoaded] = useState(false);
 
   const template = useMemo(
@@ -60,41 +74,45 @@ export function Production({
       promoWeekdays: settings.promoWeekdays,
       promoMultiplier: settings.promoMultiplier,
       salvage: settings.salvage,
+      labourPerRoll: settings.labourPerRoll,
+      saleShare: settings.saleShare,
+      counted,
     }),
-    [date, items, template, history, settings],
+    [date, items, template, history, settings, counted],
   );
   const recByItem = useMemo(
     () => new Map(recSet.recommendations.map((r) => [r.itemId, r])),
     [recSet],
   );
 
-  // The last ten RECORDED days of this item, sold per day, drawn beside the
-  // row so a number is never read without its recent shape. Recorded, not
-  // calendar: after a gap in the log the last ten calendar days are empty and
-  // the column looks broken, while the last ten days you actually sold it are
-  // exactly what you want to see. Hot (accent) when it sold out on most of
-  // them -- the line is then the ceiling, not the demand.
-  const sparks = useMemo(() => {
-    const out = new Map<number, { values: Array<number | null>; hot: boolean }>();
-    if (!history) return out;
+  // The line of record under every item: what was made on the last day you
+  // traded, and how often this weekday has sold out lately. A number is never
+  // read without the two facts the operator actually decides on.
+  //
+  // What was MADE is known whether or not the leftovers were counted. How it
+  // SOLD is not, so the sell-out count uses counted days only -- the same
+  // rule the suggestion itself now follows.
+  const record = useMemo(() => {
+    const byItem = new Map<number, { prevMade: number; soldOut: number; days: number }>();
+    if (!history) return { prevDate: null as BizDate | null, prevTotal: 0, byItem };
     const obs = toObservations(history).filter((o) => o.date < date);
-    const byItem = new Map<number, typeof obs>();
-    for (const o of obs) {
-      const list = byItem.get(o.itemId) ?? [];
-      list.push(o);
-      byItem.set(o.itemId, list);
-    }
+    const prevDate = obs.length ? obs[obs.length - 1].date : null;
+    const wd = isoWeekday(date);
+    const sameDay = obs.filter((o) => counted.has(o.date) && isoWeekday(o.date) === wd);
+    let prevTotal = 0;
     for (const item of items) {
-      const recent = (byItem.get(item.itemId) ?? []).slice(-SPARK_DAYS);
-      if (recent.length < 2) continue;
-      const censored = recent.filter((o) => o.censored).length;
-      out.set(item.itemId, {
-        values: recent.map((o) => o.sold),
-        hot: recent.length >= 4 && censored / recent.length >= 0.6,
+      const mine = sameDay.filter((o) => o.itemId === item.itemId).slice(-RECORD_DAYS);
+      const prev = prevDate
+        ? obs.find((o) => o.date === prevDate && o.itemId === item.itemId) : undefined;
+      prevTotal += prev?.supply ?? 0;
+      byItem.set(item.itemId, {
+        prevMade: prev?.supply ?? 0,
+        soldOut: mine.filter((o) => o.censored && o.supply > 0).length,
+        days: mine.length,
       });
     }
-    return out;
-  }, [history, items, date]);
+    return { prevDate, prevTotal, byItem };
+  }, [history, items, date, counted]);
 
   useEffect(() => {
     let live = true;
@@ -114,8 +132,55 @@ export function Production({
     return () => { live = false; };
   }, [date, items, template]);
 
+  // What the record says about today's weather. Null means "say nothing",
+  // which is the common and correct answer outside the observed range.
+  const advice = useMemo(
+    () => (weatherEffect ? adviseFor(weather, weatherEffect) : null),
+    [weather, weatherEffect],
+  );
+  // `offered`, not `multiplier`: a measured-but-noisy estimate can still be
+  // reached for by hand, which is what the operator asked for.
+  const offer = advice && advice.offered !== null ? advice : null;
+  // RE-CENTRED. The band ratio is measured against dry days; the suggestion
+  // below is built from recent days, rain included.
+  // Applying the raw ratio would charge for the rain twice -- and it would
+  // also disagree with the home screen, which quotes the re-centred figure.
+  const wxPlan = offer && weatherEffect
+    ? planFactor(offer.offered!, weatherEffect) : 1;
+  const wxPct = Math.round((wxPlan - 1) * 1000) / 10;
+  // Below half a percent there is nothing to apply and nothing to say.
+  const canApplyWx = !!offer && Math.abs(wxPct) >= 0.5;
+  const wxFactor = applyWeather && canApplyWx ? wxPlan : 1;
+
+  // Scale ONCE, here, and let every consumer read the same map. The factor
+  // used to be applied inside the row mapping only, so the rows moved while
+  // the footer total and "use the rule's N" kept quoting the unscaled figure
+  // -- three places computing the same thing and disagreeing on screen.
+  const scaledRec = useMemo(() => {
+    if (wxFactor === 1) return recByItem;
+    // Scaled against the DAY's total, not item by item. At one to four units
+    // an item, per-item rounding swallows the whole adjustment -- see
+    // scaleQuantities.
+    const qtys = new Map<number, number>();
+    for (const [id, rec] of recByItem) {
+      if (rec.modelQty !== null) qtys.set(id, rec.modelQty);
+    }
+    const { scaled } = scaleQuantities(qtys, wxFactor);
+    const out = new Map(recByItem);
+    for (const [id, rec] of recByItem) {
+      const q = scaled.get(id);
+      if (q !== undefined) out.set(id, { ...rec, modelQty: q });
+    }
+    return out;
+  }, [recByItem, wxFactor]);
+
+  const wdShort = weekdayName(date).slice(0, 3);
+  const prevWd = record.prevDate ? weekdayName(record.prevDate).slice(0, 3) : null;
+
   const rows: RowSpec[] = items.map((item) => {
-    const rec = settings.showSuggestions ? recByItem.get(item.itemId) : undefined;
+    // Scaled, never the operator's own number: the box keeps whatever they
+    // put in it and only the suggestion beside it moves.
+    const rec = settings.showSuggestions ? scaledRec.get(item.itemId) : undefined;
     const d = rec ? delta(rec) : null;
     // Phase 5 requires the naive baseline to be visible on every line, so a
     // recommendation can always be compared against the dumbest alternative.
@@ -124,30 +189,35 @@ export function Production({
     // Explain a row only when the explanation would change what you do: the
     // suggestion disagrees with your number, or the number cannot be trusted.
     const worthExplaining = !!rec && (d !== null && d !== 0 || !!rec.caveat);
-    const bits = worthExplaining
-      ? [rec!.reason,
-         naive !== null && naive !== undefined ? `baseline ${naive}` : null].filter(Boolean)
-      : [];
-    const spark = sparks.get(item.itemId);
+    const r = record.byItem.get(item.itemId);
+    const bits = [
+      prevWd && r ? `${prevWd} ${r.prevMade}` : null,
+      r && r.days > 0 ? `sold out ${r.soldOut}/${r.days} ${wdShort}`
+        : `no counted ${wdShort} yet`,
+      // The dumbest alternative stays visible wherever the rule disagrees, so
+      // a suggestion can always be checked against it.
+      worthExplaining && naive !== null && naive !== undefined ? `baseline ${naive}` : null,
+    ].filter(Boolean);
+    // The rule's own reason for disagreeing with the box, as the chance of the
+    // roll in dispute against what it needs. Left out once weather has scaled
+    // the suggestion: the chances describe the unscaled number.
+    const why = settings.showSuggestions && rec && wxFactor === 1
+      ? explainRoll(rec, qty[item.itemId] ?? 0) ?? undefined : undefined;
     return {
       item,
       value: qty[item.itemId] ?? 0,
-      hint: bits.length ? bits.join(" · ") : undefined,
-      caveat: worthExplaining ? rec?.caveat : undefined,
-      // Agreement is the default and needs no ink. Blank means "the rule
-      // agrees"; an em dash still means "no opinion", which is different.
-      deltaLabel: !settings.showSuggestions ? undefined
-        : d === null ? "—" : d === 0 ? "" : `${d > 0 ? "+" : "−"}${Math.abs(d)}`,
-      deltaDirection: d === null || d === 0 ? "none" : d > 0 ? "up" : "down",
-      aside: spark ? <Sparkline values={spark.values} hot={spark.hot} /> : null,
+      meta: bits.join(" · "),
+      why,
+      // Short, and appended to the record rather than replacing it: the long
+      // form ("true demand is higher than anything recorded...") ran to three
+      // lines on a phone and hid the very numbers it was qualifying.
+      caveat: worthExplaining && rec?.isFallback ? "few on record" : undefined,
+      // Blue, always: a number the rule produced. An em dash is "no opinion".
+      ref: settings.showSuggestions
+        ? { text: rec?.modelQty != null ? String(rec.modelQty) : "—", tone: "rule" as const }
+        : undefined,
     };
   });
-
-  // Anything at zero with nothing suggested is off today's list. It stays one
-  // tap away rather than adding a screen of empty rows to scroll past.
-  const active = rows.filter((r) => r.value > 0
-    || (recByItem.get(r.item.itemId)?.modelQty ?? 0) > 0);
-  const idle = rows.filter((r) => !active.includes(r));
 
   const total = items.reduce((s, i) => s + (qty[i.itemId] ?? 0), 0);
 
@@ -159,7 +229,7 @@ export function Production({
   // What tapping "use the suggestion" would actually make: the rule's number
   // where it has one, your current number where it does not.
   const suggestedTotal = items.reduce((sum, item) => {
-    const rec = recByItem.get(item.itemId);
+    const rec = scaledRec.get(item.itemId);
     return sum + (rec?.modelQty ?? qty[item.itemId] ?? 0);
   }, 0);
   const suggestionDiffers = suggestedTotal !== total;
@@ -168,9 +238,18 @@ export function Production({
   function acceptAll() {
     const next: Record<number, number> = {};
     for (const item of items) {
-      const rec = recByItem.get(item.itemId);
+      const rec = scaledRec.get(item.itemId);
       next[item.itemId] = rec?.modelQty ?? qty[item.itemId] ?? 0;
     }
+    setQty(next);
+    setTouched(new Set(items.map((i) => i.itemId)));
+  }
+
+  /** Make what was made on the last trading day. The operator's own instinct
+   *  has been beating the rule on Tuesdays, so it deserves one tap too. */
+  function copyPrevious() {
+    const next: Record<number, number> = {};
+    for (const item of items) next[item.itemId] = record.byItem.get(item.itemId)?.prevMade ?? 0;
     setQty(next);
     setTouched(new Set(items.map((i) => i.itemId)));
   }
@@ -185,10 +264,19 @@ export function Production({
 
   async function confirm() {
     setSaving(true);
+    setProblem(null);
     const payload: Record<number, number> = {};
     for (const item of items) payload[item.itemId] = qty[item.itemId] ?? 0;
-    await store.saveEntries(date, "made", payload);
-    await store.confirmDay(date, "production");
+    try {
+      await store.saveEntries(date, "made", payload);
+      await store.confirmDay(date, "production");
+    } catch (err) {
+      // Stay on this screen -- see WasteEntry.confirm for why leaving is how
+      // the numbers get lost.
+      setProblem(describeSaveError(err));
+      setSaving(false);
+      return;
+    }
     void store.sync();
     onDone();
   }
@@ -196,20 +284,14 @@ export function Production({
   if (!loaded) return <div className="card">Loading…</div>;
 
   const promo = settings.promoWeekdays.includes(isoWeekday(date));
+  const changed = items.filter((i) => (qty[i.itemId] ?? 0)
+    !== (scaledRec.get(i.itemId)?.modelQty ?? qty[i.itemId] ?? 0)).length;
 
   return (
     <div>
-      <header className="bar">
-        <h1>
-          Production
-          <span className="sub">
-            {weekdayName(date).slice(0, 3)} · {formatShort(date)} · template{promo ? " · promo" : ""}
-          </span>
-        </h1>
-        <button className="ghost" onClick={onBack} aria-label="Back">
-          <Icon name="back" size={20} />
-        </button>
-      </header>
+      <ScreenHeader
+        title="Make"
+        eyebrow={`${wdShort} · ${formatShort(date)}${promo ? " · promo" : ""}`} />
 
       {settings.showSuggestions && (recSet.degraded || recSet.notes.length > 0) && (
         <details className="banner as-details">
@@ -223,62 +305,172 @@ export function Production({
         </details>
       )}
 
-      {!template && (
-        <div className="card">
-          <h2>No {weekdayName(date)} template yet</h2>
-          <p className="hint">
-            Set one and this screen fills itself in — that's what makes it a
-            one-minute job instead of a five-minute one.
-          </p>
-          <button className="primary" onClick={onEditTemplate}>
-            Set up a {weekdayName(date)} template
-          </button>
-        </div>
-      )}
+      {advice && <WeatherAdvisory advice={advice} weather={weather}
+                                  pct={wxPct} canApply={canApplyWx}
+                                  applied={applyWeather}
+                                  onToggle={() => setApplyWeather((v) => !v)} />}
 
-      <div className="cols" style={{ gridTemplateColumns: "minmax(0,1fr) 56px 30px 132px" }}>
-        <div>Item</div>
-        <div>10d</div>
-        <div className="r">Δ</div>
+      <section className="totals" aria-label="Totals">
+        <div><span className="k">Making</span><span className="v num">{total}</span></div>
+        {settings.showSuggestions && (
+          <div><span className="k">Rule says</span><span className="v num rule">{suggestedTotal}</span></div>
+        )}
+        <div>
+          <span className="k">{prevWd ? `${prevWd} made` : "Last made"}</span>
+          <span className="v num dim">{record.prevDate ? record.prevTotal : "—"}</span>
+        </div>
+      </section>
+
+      <div className="quick">
+        {settings.showSuggestions && (
+          <button className="rule" onClick={acceptAll} disabled={!suggestionDiffers}>
+            {suggestionDiffers ? "Use rule for all" : "Matches rule"}
+          </button>
+        )}
+        <button onClick={copyPrevious} disabled={!record.prevDate}>
+          Copy {prevWd ?? "last day"}
+        </button>
+        <button onClick={template ? resetToTemplate : onEditTemplate}>
+          {template ? "Usual amounts" : "Set usual amounts"}
+        </button>
+      </div>
+
+      <div className={`cols qcols${settings.showSuggestions ? "" : " no-ref"}`}>
+        <div>Item · sheet order</div>
+        {settings.showSuggestions && <div className="c rule">Rule</div>}
         <div className="c">Make</div>
       </div>
-      <QuantityList rows={active} touched={touched} onChange={change} hasAside />
-
-      {idle.length > 0 && (
-        <details className="card">
-          <summary>Not making today ({idle.length})</summary>
-          <QuantityList rows={idle} touched={touched} onChange={change} hasAside />
-        </details>
-      )}
-
-      <div className="card">
-        <button className="link" onClick={acceptAll}
-                disabled={!suggestionDiffers || !settings.showSuggestions}>
-          {suggestionDiffers
-            ? `Use the rule's ${suggestedTotal}`
-            : "Already matches the rule"}
-        </button>
-        {" · "}
-        <button className="link" onClick={resetToTemplate} disabled={!template}>
-          Reset to template
-        </button>
-        {" · "}
-        <button className="link" onClick={onEditTemplate}>Edit templates</button>
-      </div>
+      <QuantityList rows={rows} touched={touched} onChange={change} />
 
       <div className="footer">
+        {problem && (
+          <div className="banner warn save-failed" role="alert">
+            <Icon name="alert" size={16} className="ico" />
+            <span>{problem}</span>
+          </div>
+        )}
         <div className="inner">
           <div className="tally">
             <div className="value">{total}</div>
             <div className="label">
-              {settings.showSuggestions && suggestionDiffers
-                ? `rule ${suggestedTotal}` : `${touched.size} changed`}
+              {!settings.showSuggestions ? `${touched.size} changed`
+                : changed === 0 ? "same as rule" : `${changed} off rule`}
             </div>
           </div>
           <button className="primary" disabled={saving} onClick={confirm}>
             {saving ? "Saving…" : `Confirm ${total} made`}
           </button>
         </div>
+      </div>
+    </div>
+  );
+}
+
+/**
+ * The weather advisory.
+ *
+ * Advisory by default and applied only on a tap, which is the same contract
+ * as the rule's delta: the app never quietly changes a number the operator is
+ * about to act on.
+ *
+ * The "not yet separable from chance" case still offers the apply button.
+ * That is deliberate -- the operator asked to be able to take it, it is their
+ * kiosk and their judgement, and the honest thing is to give them the number
+ * AND its weakness rather than hiding one to protect them from the other.
+ */
+function WeatherAdvisory({ advice, weather, pct, canApply, applied, onToggle }: {
+  advice: NonNullable<ReturnType<typeof adviseFor>>;
+  weather?: DayWeather;
+  /** Re-centred against a TYPICAL day of this weekday, not a dry one --
+   *  because that is what the suggestion underneath is built from. */
+  pct: number;
+  canApply: boolean;
+  applied: boolean;
+  onToggle: () => void;
+}) {
+  const sky = weather ? describeWeather(weather) : "";
+
+  let body: React.ReactNode;
+  switch (advice.reason) {
+    case "ok":
+      body = canApply ? (
+        <>
+          <strong>{sky}</strong> today. Days like this have sold{" "}
+          <strong>{Math.abs(pct)}% {pct < 0 ? "less" : "more"}</strong>{" "}
+          than a typical day of the same weekday, across {advice.n} of them.
+        </>
+      ) : sky === "clear" || sky === "partly cloudy" || sky === "overcast" ? (
+        // Careful not to claim "a normal day": the home screen puts a fair
+        // day a couple of percent ABOVE a typical one, because typical days
+        // include the rainy ones. This is a statement about the PLAN, which
+        // is a different thing and stays true either way.
+        <>
+          <strong>{sky}</strong> today — nothing unusual for your record, so
+          the suggestion stands as it is.
+        </>
+      ) : (
+        // A trace of drizzle is not a wet day, and saying "nothing unusual"
+        // next to the word "drizzle" reads like the app disagreeing with the
+        // window. Name the threshold instead.
+        <>
+          <strong>{sky}</strong> today, but too little to count — your wet days
+          start at {WET_INCHES}&#8243; during opening hours.
+        </>
+      );
+      break;
+    case "too-noisy":
+      body = (
+        <>
+          <strong>{sky}</strong> today. Days like this look a little slower, but
+          across {advice.n} of them it could still be chance. Apply it if you
+          want to lean that way.
+        </>
+      );
+      break;
+    case "unseen-band":
+      body = (
+        <>
+          <strong>{sky}</strong> today, which your record has barely seen. No
+          adjustment — it will start suggesting one once there are enough days.
+        </>
+      );
+      break;
+    case "out-of-range":
+      body = (
+        <>
+          <strong>{sky}</strong>, and colder or hotter than anything you have
+          traded in
+          {advice.tempRange && <> (your record runs {Math.round(advice.tempRange[0])}–
+            {Math.round(advice.tempRange[1])}°F)</>}. No adjustment: a rule
+          fitted to your summer has no claim on this.
+        </>
+      );
+      break;
+    default:
+      body = (
+        <>
+          <strong>{sky}</strong> today. Not enough counted days yet to say what
+          weather does here.
+        </>
+      );
+  }
+
+  return (
+    <div className={`banner wx-advice${applied ? " wx-applied" : ""}`}>
+      <Icon name={advice.endorsed && canApply ? "trend" : "clock"}
+            size={16} className="ico" />
+      <div className="body">
+        <span>{body}</span>
+        {canApply && (
+          <div className="wx-advice-actions">
+            <button className={applied ? "" : "small"} onClick={onToggle}
+                    aria-pressed={applied}>
+              {applied
+                ? `Applied ${pct > 0 ? "+" : ""}${pct}% — undo`
+                : `Apply ${pct > 0 ? "+" : ""}${pct}% to the suggestion`}
+            </button>
+          </div>
+        )}
       </div>
     </div>
   );

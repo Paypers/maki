@@ -1,14 +1,20 @@
 /**
- * The shared entry grid used by both the production and waste screens.
+ * The one entry list, used by Make, Count and Usual amounts.
  *
- * Speed comes from pre-fill: the operator touches only the rows that differ from
- * the expected value. Typing thirty numbers is three minutes; correcting four is
- * under a minute, which is the whole requirement.
+ * Every screen that asks for quantities draws them the same way, because the
+ * operator should never have to re-learn a row: the item's name with a line of
+ * record under it, one reference number, then the stepper. Only what the
+ * reference column MEANS changes between screens -- the rule's suggestion on
+ * Make (always blue: a number the rule produced, never one you entered), what
+ * was made on Count.
  *
- * `touched` is tracked per row and surfaced visually, so at a glance you can see
- * what you changed from the default before committing. In `blankUntouched`
- * mode an untouched row shows no number at all -- an em dash -- because on the
- * leftovers count a zero nobody looked at is not an observation.
+ * Items are drawn in the paper prep sheet's own blocks, in sheet order, so the
+ * screen reads down the same way the case and the paper do.
+ *
+ * Speed comes from pre-fill: the operator touches only the rows that differ.
+ * In `blankUntouched` mode an untouched row shows a dashed em dash instead of
+ * a number, because on the leftovers count a zero nobody looked at is not an
+ * observation.
  */
 
 import type { ReactNode } from "react";
@@ -19,14 +25,15 @@ export interface RowSpec {
   item: Item;
   /** Pre-filled value. */
   value: number;
-  /** Reason, naive baseline and confidence, shown under the item name. */
-  hint?: string;
-  /** Shown only when the number cannot be trusted at face value. */
+  /** One short line under the name: the recent record, or why the rule differs. */
+  meta?: ReactNode;
+  /** Shown only when the number cannot be taken at face value. */
   caveat?: string;
-  deltaLabel?: string;
-  deltaDirection?: "up" | "down" | "none";
-  /** A small figure beside the name -- a ten-day sparkline, or a "made" count. */
-  aside?: ReactNode;
+  /** The rule's reasoning where it disagrees with the box, in the rule's blue:
+   *  the chance of the roll in dispute against the chance it needs. */
+  why?: string;
+  /** The reference column. `rule` is the rule's number and is drawn blue. */
+  ref?: { text: string; tone: "rule" | "plain" };
 }
 
 interface Props {
@@ -36,79 +43,88 @@ interface Props {
   max?: number;
   /** Untouched rows render as an em dash rather than their pre-filled value. */
   blankUntouched?: boolean;
-  /** Whether any row carries an `aside`; sets the grid so columns line up. */
-  hasAside?: boolean;
+}
+
+/** Consecutive rows that share a sheet block. Unlisted items form one last block. */
+export function groupRows<T extends { item: Item }>(rows: T[]): T[][] {
+  const out: T[][] = [];
+  let key: number | null | undefined = undefined;
+  for (const r of rows) {
+    const g = r.item.sheetGroup ?? null;
+    if (!out.length || g !== key) { out.push([]); key = g; }
+    out[out.length - 1].push(r);
+  }
+  return out;
 }
 
 export function QuantityList({
-  rows, touched, onChange, max = 99, blankUntouched = false, hasAside = false,
+  rows, touched, onChange, max = 99, blankUntouched = false,
 }: Props) {
+  const hasRef = rows.some((r) => r.ref);
   const clamp = (n: number) => Math.max(0, Math.min(max, n));
 
   return (
-    <div>
-      {rows.map(({ item, value, hint, caveat, deltaLabel, deltaDirection, aside }) => {
-        const isTouched = touched.has(item.itemId);
-        const blank = blankUntouched && !isTouched;
-        return (
-          <div className={`row${hasAside ? "" : " no-spark"}`} key={item.itemId}>
-            <label className="name" htmlFor={`q-${item.itemId}`}>
-              {item.displayName}
-            </label>
+    <div className="qlist">
+      {groupRows(rows).map((group) => (
+        <div className="qgroup" key={group[0].item.itemId}>
+          {group.map(({ item, value, meta, caveat, why, ref }) => {
+            const isTouched = touched.has(item.itemId);
+            const blank = blankUntouched && !isTouched;
+            return (
+              <div className={`row qrow${hasRef ? "" : " no-ref"}`} key={item.itemId}>
+                <div className="qname">
+                  <label className="name" htmlFor={`q-${item.itemId}`}>
+                    {item.displayName}
+                  </label>
+                  {(meta || caveat) && (
+                    <small className={`meta${caveat ? " caveat" : ""}`}>
+                      {caveat && <Icon name="alert" size={12} className="ico" />}
+                      <span>{meta}{meta && caveat ? " · " : ""}{caveat}</span>
+                    </small>
+                  )}
+                  {why && <small className="why-rule">{why}</small>}
+                </div>
 
-            {hasAside && <div className="aside">{aside ?? null}</div>}
+                {hasRef && (
+                  <span className={`qref num ${ref?.tone ?? "plain"}`}>{ref?.text ?? ""}</span>
+                )}
 
-            {deltaLabel !== undefined && (
-              // Direction is carried by the sign and the number, never by colour
-              // alone: the good/critical pair is indistinguishable under deuteranopia.
-              <span className={`delta ${deltaDirection ?? "none"}`}>{deltaLabel}</span>
-            )}
+                <div className={`stepper${isTouched ? " touched" : ""}${blank ? " blank" : ""}`}>
+                  <button
+                    className="step"
+                    disabled={value <= 0 && !blank}
+                    aria-label={`One fewer ${item.displayName}`}
+                    onClick={() => onChange(item.itemId, clamp(blank ? 0 : value - 1))}
+                  >
+                    <Icon name="minus" size={18} />
+                  </button>
 
-            {/* One control, not three. As separate outlined buttons this put
-                three borders on every row -- ninety-three on a full sheet --
-                and read as three unrelated things rather than one number. */}
-            <div className={`stepper${isTouched ? " touched" : ""}${blank ? " blank" : ""}`}>
-              <button
-                className="step"
-                disabled={value <= 0 && !blank}
-                aria-label={`One fewer ${item.displayName}`}
-                onClick={() => onChange(item.itemId, clamp(blank ? 0 : value - 1))}
-              >
-                <Icon name="minus" size={16} />
-              </button>
+                  <input
+                    id={`q-${item.itemId}`}
+                    type="number"
+                    inputMode="numeric"
+                    min={0}
+                    max={max}
+                    value={value}
+                    aria-label={blank ? `${item.displayName}: not counted yet` : undefined}
+                    onFocus={(e) => e.currentTarget.select()}
+                    onChange={(e) => onChange(item.itemId, clamp(Number(e.target.value || 0)))}
+                  />
 
-              <input
-                id={`q-${item.itemId}`}
-                type="number"
-                inputMode="numeric"
-                min={0}
-                max={max}
-                value={value}
-                aria-label={blank ? `${item.displayName}: not counted yet` : undefined}
-                onFocus={(e) => e.currentTarget.select()}
-                onChange={(e) => onChange(item.itemId, clamp(Number(e.target.value || 0)))}
-              />
-
-              <button
-                className="step"
-                disabled={value >= max}
-                aria-label={`One more ${item.displayName}`}
-                onClick={() => onChange(item.itemId, clamp(blank ? 1 : value + 1))}
-              >
-                <Icon name="plus" size={16} />
-              </button>
-            </div>
-
-            {(hint || caveat) && (
-              <small className={`why${caveat ? " caveat" : ""}`}
-                     title={[caveat, hint].filter(Boolean).join(" — ")}>
-                {caveat && <Icon name="alert" size={13} className="ico" />}
-                <span>{hint ?? caveat}</span>
-              </small>
-            )}
-          </div>
-        );
-      })}
+                  <button
+                    className="step"
+                    disabled={value >= max && !blank}
+                    aria-label={`One more ${item.displayName}`}
+                    onClick={() => onChange(item.itemId, clamp(blank ? 1 : value + 1))}
+                  >
+                    <Icon name="plus" size={18} />
+                  </button>
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      ))}
     </div>
   );
 }
