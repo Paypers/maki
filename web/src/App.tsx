@@ -11,6 +11,7 @@ import { Setup, type SetupTarget } from "./screens/Setup";
 import { DaySheet } from "./components/DaySheet";
 import { buildDayStats, emptyDay, type DayStatIndex } from "./lib/dayStats";
 import { economicsOf, estimateDay } from "./lib/money";
+import { checkAmbition } from "./lib/ambition";
 import { estimateWeatherEffect, scoreDaysForWeather, type WeatherEffect } from "./lib/weatherEffect";
 import { buildTodayOutlook } from "./lib/todayOutlook";
 import { syncWeather } from "./lib/weatherSync";
@@ -87,10 +88,11 @@ export default function App() {
   );
 
   const refresh = useCallback(async () => {
-    const [withCosts, tpls, asg, days, entries, queue, cfg] = await Promise.all([
+    const [withCosts, tpls, asg, days, entries, queue, loaded] = await Promise.all([
       store.itemsWithCosts(), store.getTemplates(), store.getAssignments(),
       store.getDays(), store.getAllEntries(), store.getQueue(), store.getSettings(),
     ]);
+    let cfg = loaded;
     const production = new Set(
       entries.filter((e) => e.entryType === "made" || e.entryType === "refill")
              .map((e) => e.businessDate),
@@ -110,6 +112,13 @@ export default function App() {
     setItems(withCosts.filter((i) => i.active).sort((a, b) => a.sortOrder - b.sortOrder));
     setTemplates(tpls);
     setAssignments(asg);
+    // The ambition trial starts the day the climber first reaches this phone:
+    // nothing before it could have followed its suggestions, so nothing
+    // before it is judged. Written once, then it moves only when the level does.
+    if (cfg.ambitionSince == null) {
+      cfg = { ...cfg, ambitionSince: store.today(cfg.rolloverHour) };
+      await store.saveSettings(cfg);
+    }
     setSettings(cfg);
     setTasks(outstandingTasks(state, store.today(cfg.rolloverHour)));
     setPending(queue.length);
@@ -226,6 +235,13 @@ export default function App() {
     };
   }, [refresh]);
 
+  // Re-runs the rule over the last few weeks to settle its extra rolls, so it
+  // is worked out once per data change, not on every render.
+  const ambitionCheck = useMemo(
+    () => (settings && stats && ready
+      ? checkAmbition(stats, allEntries, items, settings, today) : null),
+    [stats, allEntries, items, settings, today, ready]);
+
   if (!ready || !settings) {
     return <div className="app"><div className="card">Loading…</div></div>;
   }
@@ -277,6 +293,7 @@ export default function App() {
   };
   const goFromSetup = (target: SetupTarget) => sub(target, "setup");
 
+
   // Running at a throwaway per-deploy address: this copy has its own data,
   // separate from the real app. Say so on every screen until they leave.
   const stranded = isThrowawayCopy(location.hostname);
@@ -306,6 +323,7 @@ export default function App() {
                 summary={summary} stats={stats} onOpen={openTask}
                 outlook={buildTodayOutlook(today, stats, weather.get(today), weatherEffect)}
                 settings={settings} itemCount={items.length}
+                ambition={ambitionCheck}
                 onGo={goFromHome} onPickDay={setSheetDate} />
         )}
 

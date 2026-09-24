@@ -1,5 +1,5 @@
 {
- "version": "2.0.0-o0.3-h3-p0.5-m5/1@0.9-s1-f1",
+ "version": "2.1.0-o0.3-h3-p0.5-m5/1@0.9-s1-f1-c8/3",
  "cases": [
   {
    "name": "steady leftovers",
@@ -232,7 +232,16 @@
     ],
     "quantity": 4,
     "recentMax": 6,
-    "testing": false
+    "testing": false,
+    "base": 4,
+    "climb": {
+     "steps": 0,
+     "days": 8,
+     "soldOut": 0,
+     "popularity": 3.5,
+     "continuation": 0.7,
+     "confidence": 0.018751251717798716
+    }
    }
   },
   {
@@ -463,7 +472,16 @@
     ],
     "quantity": 4,
     "recentMax": 3,
-    "testing": true
+    "testing": true,
+    "base": 4,
+    "climb": {
+     "steps": 0,
+     "days": 0,
+     "soldOut": 0,
+     "popularity": 3.0,
+     "continuation": 0.7,
+     "confidence": 0.0
+    }
    }
   },
   {
@@ -701,7 +719,16 @@
     ],
     "quantity": 11,
     "recentMax": 10,
-    "testing": true
+    "testing": true,
+    "base": 11,
+    "climb": {
+     "steps": 0,
+     "days": 0,
+     "soldOut": 0,
+     "popularity": 10.0,
+     "continuation": 0.7,
+     "confidence": 0.0
+    }
    }
   },
   {
@@ -1119,7 +1146,16 @@
     ],
     "quantity": 3,
     "recentMax": 7,
-    "testing": false
+    "testing": false,
+    "base": 3,
+    "climb": {
+     "steps": 0,
+     "days": 8,
+     "soldOut": 2,
+     "popularity": 2.0,
+     "continuation": 0.7,
+     "confidence": 0.04540573224505996
+    }
    }
   },
   {
@@ -1537,7 +1573,16 @@
     ],
     "quantity": 3,
     "recentMax": 7,
-    "testing": false
+    "testing": false,
+    "base": 3,
+    "climb": {
+     "steps": 0,
+     "days": 8,
+     "soldOut": 2,
+     "popularity": 2.0,
+     "continuation": 0.7,
+     "confidence": 0.2893260804119233
+    }
    }
   },
   {
@@ -1954,7 +1999,16 @@
     ],
     "quantity": 2,
     "recentMax": 7,
-    "testing": false
+    "testing": false,
+    "base": 2,
+    "climb": {
+     "steps": 0,
+     "days": 8,
+     "soldOut": 2,
+     "popularity": 2.0,
+     "continuation": 0.7,
+     "confidence": 0.028775313042386837
+    }
    }
   },
   {
@@ -2184,7 +2238,16 @@
     ],
     "quantity": 1,
     "recentMax": 2,
-    "testing": false
+    "testing": false,
+    "base": 1,
+    "climb": {
+     "steps": 0,
+     "days": 8,
+     "soldOut": 0,
+     "popularity": 0.0,
+     "continuation": 0.42,
+     "confidence": 0.0002916061498462722
+    }
    }
   },
   {
@@ -2412,7 +2475,1060 @@
     ],
     "quantity": 0,
     "recentMax": 0,
-    "testing": false
+    "testing": false,
+    "base": 0,
+    "climb": {
+     "steps": 0,
+     "days": 0,
+     "soldOut": 0,
+     "popularity": 0.0,
+     "continuation": 0.42,
+     "confidence": 0.0
+    }
+   }
+  },
+  {
+   "name": "a popular item climbing, balanced",
+   "date": "2026-02-16",
+   "price": 8.99,
+   "unitCost": 2.03,
+   "share": 0.8,
+   "ambition": 3,
+   "days": [
+    {
+     "date": "2026-01-05",
+     "made": 3,
+     "waste": 0
+    },
+    {
+     "date": "2026-01-06",
+     "made": 3,
+     "waste": 0
+    },
+    {
+     "date": "2026-01-07",
+     "made": 3,
+     "waste": 0
+    },
+    {
+     "date": "2026-01-08",
+     "made": 3,
+     "waste": 0
+    },
+    {
+     "date": "2026-01-09",
+     "made": 3,
+     "waste": 0
+    },
+    {
+     "date": "2026-01-10",
+     "made": 3,
+     "waste": 0
+    },
+    {
+     "date": "2026-01-11",
+     "made": 3,
+     "waste": 0
+    },
+    {
+     "date": "2026-01-12",
+     "made": 3,
+     "waste": 0
+    },
+    {
+     "date": "2026-01-13",
+     "made": 3,
+     "waste": 0
+    },
+    {
+     "date": "2026-01-14",
+     "made": 3,
+     "waste": 0
+    },
+    {
+     "date": "2026-01-15",
+     "made": 3,
+     "waste": 0
+    },
+    {
+     "date": "2026-01-16",
+     "made": 3,
+     "waste": 0
+    },
+    {
+     "date": "2026-01-17",
+     "made": 3,
+     "waste": 0
+    },
+    {
+     "date": "2026-01-18",
+     "made": 3,
+     "waste": 0
+    },
+    {
+     "date": "2026-01-19",
+     "made": 3,
+     "waste": 0
+    },
+    {
+     "date": "2026-01-20",
+     "made": 3,
+     "waste": 0
+    },
+    {
+     "date": "2026-01-21",
+     "made": 3,
+     "waste": 0
+    },
+    {
+     "date": "2026-01-22",
+     "made": 3,
+     "waste": 0
+    },
+    {
+     "date": "2026-01-23",
+     "made": 3,
+     "waste": 0
+    },
+    {
+     "date": "2026-01-24",
+     "made": 3,
+     "waste": 0
+    },
+    {
+     "date": "2026-01-25",
+     "made": 3,
+     "waste": 0
+    },
+    {
+     "date": "2026-01-26",
+     "made": 3,
+     "waste": 0
+    },
+    {
+     "date": "2026-01-27",
+     "made": 3,
+     "waste": 0
+    },
+    {
+     "date": "2026-01-28",
+     "made": 3,
+     "waste": 0
+    },
+    {
+     "date": "2026-01-29",
+     "made": 3,
+     "waste": 0
+    },
+    {
+     "date": "2026-01-30",
+     "made": 3,
+     "waste": 0
+    },
+    {
+     "date": "2026-01-31",
+     "made": 3,
+     "waste": 0
+    },
+    {
+     "date": "2026-02-01",
+     "made": 3,
+     "waste": 0
+    },
+    {
+     "date": "2026-02-02",
+     "made": 3,
+     "waste": 0
+    },
+    {
+     "date": "2026-02-03",
+     "made": 3,
+     "waste": 0
+    },
+    {
+     "date": "2026-02-04",
+     "made": 3,
+     "waste": 0
+    },
+    {
+     "date": "2026-02-05",
+     "made": 3,
+     "waste": 0
+    },
+    {
+     "date": "2026-02-06",
+     "made": 3,
+     "waste": 0
+    },
+    {
+     "date": "2026-02-07",
+     "made": 3,
+     "waste": 0
+    },
+    {
+     "date": "2026-02-08",
+     "made": 3,
+     "waste": 0
+    },
+    {
+     "date": "2026-02-09",
+     "made": 4,
+     "waste": 1
+    },
+    {
+     "date": "2026-02-10",
+     "made": 4,
+     "waste": 0
+    },
+    {
+     "date": "2026-02-11",
+     "made": 4,
+     "waste": 0
+    },
+    {
+     "date": "2026-02-12",
+     "made": 4,
+     "waste": 0
+    },
+    {
+     "date": "2026-02-13",
+     "made": 4,
+     "waste": 0
+    },
+    {
+     "date": "2026-02-14",
+     "made": 4,
+     "waste": 1
+    },
+    {
+     "date": "2026-02-15",
+     "made": 4,
+     "waste": 0
+    }
+   ],
+   "expected": {
+    "breakEven": 0.2822580645161289,
+    "chances": [
+     0.9485845165306298,
+     0.8998125850016487,
+     0.8535482859119652,
+     0.4412383270611563,
+     0.22061916353057814,
+     0.11030958176528907
+    ],
+    "quantity": 5,
+    "recentMax": 4,
+    "testing": true,
+    "base": 4,
+    "climb": {
+     "steps": 1,
+     "days": 7,
+     "soldOut": 5,
+     "popularity": 3.1785714285714284,
+     "continuation": 0.7,
+     "confidence": 0.9481651484833394
+    }
+   }
+  },
+  {
+   "name": "the same item, bold",
+   "date": "2026-02-16",
+   "price": 8.99,
+   "unitCost": 2.03,
+   "share": 0.8,
+   "ambition": 4,
+   "days": [
+    {
+     "date": "2026-01-05",
+     "made": 3,
+     "waste": 0
+    },
+    {
+     "date": "2026-01-06",
+     "made": 3,
+     "waste": 0
+    },
+    {
+     "date": "2026-01-07",
+     "made": 3,
+     "waste": 0
+    },
+    {
+     "date": "2026-01-08",
+     "made": 3,
+     "waste": 0
+    },
+    {
+     "date": "2026-01-09",
+     "made": 3,
+     "waste": 0
+    },
+    {
+     "date": "2026-01-10",
+     "made": 3,
+     "waste": 0
+    },
+    {
+     "date": "2026-01-11",
+     "made": 3,
+     "waste": 0
+    },
+    {
+     "date": "2026-01-12",
+     "made": 3,
+     "waste": 0
+    },
+    {
+     "date": "2026-01-13",
+     "made": 3,
+     "waste": 0
+    },
+    {
+     "date": "2026-01-14",
+     "made": 3,
+     "waste": 0
+    },
+    {
+     "date": "2026-01-15",
+     "made": 3,
+     "waste": 0
+    },
+    {
+     "date": "2026-01-16",
+     "made": 3,
+     "waste": 0
+    },
+    {
+     "date": "2026-01-17",
+     "made": 3,
+     "waste": 0
+    },
+    {
+     "date": "2026-01-18",
+     "made": 3,
+     "waste": 0
+    },
+    {
+     "date": "2026-01-19",
+     "made": 3,
+     "waste": 0
+    },
+    {
+     "date": "2026-01-20",
+     "made": 3,
+     "waste": 0
+    },
+    {
+     "date": "2026-01-21",
+     "made": 3,
+     "waste": 0
+    },
+    {
+     "date": "2026-01-22",
+     "made": 3,
+     "waste": 0
+    },
+    {
+     "date": "2026-01-23",
+     "made": 3,
+     "waste": 0
+    },
+    {
+     "date": "2026-01-24",
+     "made": 3,
+     "waste": 0
+    },
+    {
+     "date": "2026-01-25",
+     "made": 3,
+     "waste": 0
+    },
+    {
+     "date": "2026-01-26",
+     "made": 3,
+     "waste": 0
+    },
+    {
+     "date": "2026-01-27",
+     "made": 3,
+     "waste": 0
+    },
+    {
+     "date": "2026-01-28",
+     "made": 3,
+     "waste": 0
+    },
+    {
+     "date": "2026-01-29",
+     "made": 3,
+     "waste": 0
+    },
+    {
+     "date": "2026-01-30",
+     "made": 3,
+     "waste": 0
+    },
+    {
+     "date": "2026-01-31",
+     "made": 3,
+     "waste": 0
+    },
+    {
+     "date": "2026-02-01",
+     "made": 3,
+     "waste": 0
+    },
+    {
+     "date": "2026-02-02",
+     "made": 3,
+     "waste": 0
+    },
+    {
+     "date": "2026-02-03",
+     "made": 3,
+     "waste": 0
+    },
+    {
+     "date": "2026-02-04",
+     "made": 3,
+     "waste": 0
+    },
+    {
+     "date": "2026-02-05",
+     "made": 3,
+     "waste": 0
+    },
+    {
+     "date": "2026-02-06",
+     "made": 3,
+     "waste": 0
+    },
+    {
+     "date": "2026-02-07",
+     "made": 3,
+     "waste": 0
+    },
+    {
+     "date": "2026-02-08",
+     "made": 3,
+     "waste": 0
+    },
+    {
+     "date": "2026-02-09",
+     "made": 4,
+     "waste": 1
+    },
+    {
+     "date": "2026-02-10",
+     "made": 4,
+     "waste": 0
+    },
+    {
+     "date": "2026-02-11",
+     "made": 4,
+     "waste": 0
+    },
+    {
+     "date": "2026-02-12",
+     "made": 4,
+     "waste": 0
+    },
+    {
+     "date": "2026-02-13",
+     "made": 4,
+     "waste": 0
+    },
+    {
+     "date": "2026-02-14",
+     "made": 4,
+     "waste": 1
+    },
+    {
+     "date": "2026-02-15",
+     "made": 4,
+     "waste": 0
+    }
+   ],
+   "expected": {
+    "breakEven": 0.2822580645161289,
+    "chances": [
+     0.9485845165306298,
+     0.8998125850016487,
+     0.8535482859119652,
+     0.4412383270611563,
+     0.22061916353057814,
+     0.11030958176528907
+    ],
+    "quantity": 6,
+    "recentMax": 4,
+    "testing": true,
+    "base": 4,
+    "climb": {
+     "steps": 2,
+     "days": 7,
+     "soldOut": 5,
+     "popularity": 3.1785714285714284,
+     "continuation": 0.7,
+     "confidence": 0.9481651484833394
+    }
+   }
+  },
+  {
+   "name": "the same item, careful",
+   "date": "2026-02-16",
+   "price": 8.99,
+   "unitCost": 2.03,
+   "share": 0.8,
+   "ambition": 1,
+   "days": [
+    {
+     "date": "2026-01-05",
+     "made": 3,
+     "waste": 0
+    },
+    {
+     "date": "2026-01-06",
+     "made": 3,
+     "waste": 0
+    },
+    {
+     "date": "2026-01-07",
+     "made": 3,
+     "waste": 0
+    },
+    {
+     "date": "2026-01-08",
+     "made": 3,
+     "waste": 0
+    },
+    {
+     "date": "2026-01-09",
+     "made": 3,
+     "waste": 0
+    },
+    {
+     "date": "2026-01-10",
+     "made": 3,
+     "waste": 0
+    },
+    {
+     "date": "2026-01-11",
+     "made": 3,
+     "waste": 0
+    },
+    {
+     "date": "2026-01-12",
+     "made": 3,
+     "waste": 0
+    },
+    {
+     "date": "2026-01-13",
+     "made": 3,
+     "waste": 0
+    },
+    {
+     "date": "2026-01-14",
+     "made": 3,
+     "waste": 0
+    },
+    {
+     "date": "2026-01-15",
+     "made": 3,
+     "waste": 0
+    },
+    {
+     "date": "2026-01-16",
+     "made": 3,
+     "waste": 0
+    },
+    {
+     "date": "2026-01-17",
+     "made": 3,
+     "waste": 0
+    },
+    {
+     "date": "2026-01-18",
+     "made": 3,
+     "waste": 0
+    },
+    {
+     "date": "2026-01-19",
+     "made": 3,
+     "waste": 0
+    },
+    {
+     "date": "2026-01-20",
+     "made": 3,
+     "waste": 0
+    },
+    {
+     "date": "2026-01-21",
+     "made": 3,
+     "waste": 0
+    },
+    {
+     "date": "2026-01-22",
+     "made": 3,
+     "waste": 0
+    },
+    {
+     "date": "2026-01-23",
+     "made": 3,
+     "waste": 0
+    },
+    {
+     "date": "2026-01-24",
+     "made": 3,
+     "waste": 0
+    },
+    {
+     "date": "2026-01-25",
+     "made": 3,
+     "waste": 0
+    },
+    {
+     "date": "2026-01-26",
+     "made": 3,
+     "waste": 0
+    },
+    {
+     "date": "2026-01-27",
+     "made": 3,
+     "waste": 0
+    },
+    {
+     "date": "2026-01-28",
+     "made": 3,
+     "waste": 0
+    },
+    {
+     "date": "2026-01-29",
+     "made": 3,
+     "waste": 0
+    },
+    {
+     "date": "2026-01-30",
+     "made": 3,
+     "waste": 0
+    },
+    {
+     "date": "2026-01-31",
+     "made": 3,
+     "waste": 0
+    },
+    {
+     "date": "2026-02-01",
+     "made": 3,
+     "waste": 0
+    },
+    {
+     "date": "2026-02-02",
+     "made": 3,
+     "waste": 0
+    },
+    {
+     "date": "2026-02-03",
+     "made": 3,
+     "waste": 0
+    },
+    {
+     "date": "2026-02-04",
+     "made": 3,
+     "waste": 0
+    },
+    {
+     "date": "2026-02-05",
+     "made": 3,
+     "waste": 0
+    },
+    {
+     "date": "2026-02-06",
+     "made": 3,
+     "waste": 0
+    },
+    {
+     "date": "2026-02-07",
+     "made": 3,
+     "waste": 0
+    },
+    {
+     "date": "2026-02-08",
+     "made": 3,
+     "waste": 0
+    },
+    {
+     "date": "2026-02-09",
+     "made": 4,
+     "waste": 1
+    },
+    {
+     "date": "2026-02-10",
+     "made": 4,
+     "waste": 0
+    },
+    {
+     "date": "2026-02-11",
+     "made": 4,
+     "waste": 0
+    },
+    {
+     "date": "2026-02-12",
+     "made": 4,
+     "waste": 0
+    },
+    {
+     "date": "2026-02-13",
+     "made": 4,
+     "waste": 0
+    },
+    {
+     "date": "2026-02-14",
+     "made": 4,
+     "waste": 1
+    },
+    {
+     "date": "2026-02-15",
+     "made": 4,
+     "waste": 0
+    }
+   ],
+   "expected": {
+    "breakEven": 0.2822580645161289,
+    "chances": [
+     0.9485845165306298,
+     0.8998125850016487,
+     0.8535482859119652,
+     0.4412383270611563,
+     0.22061916353057814,
+     0.11030958176528907
+    ],
+    "quantity": 4,
+    "recentMax": 4,
+    "testing": false,
+    "base": 4,
+    "climb": {
+     "steps": 0,
+     "days": 7,
+     "soldOut": 5,
+     "popularity": 3.1785714285714284,
+     "continuation": 0.7,
+     "confidence": 0.0
+    }
+   }
+  },
+  {
+   "name": "promo Wednesday judged on Wednesdays",
+   "date": "2026-03-04",
+   "price": 10.0,
+   "unitCost": 2.6,
+   "promoWeekdays": [
+    3
+   ],
+   "ambition": 5,
+   "days": [
+    {
+     "date": "2026-01-05",
+     "made": 4,
+     "waste": 2
+    },
+    {
+     "date": "2026-01-06",
+     "made": 4,
+     "waste": 2
+    },
+    {
+     "date": "2026-01-07",
+     "made": 4,
+     "waste": 0
+    },
+    {
+     "date": "2026-01-08",
+     "made": 4,
+     "waste": 2
+    },
+    {
+     "date": "2026-01-09",
+     "made": 4,
+     "waste": 2
+    },
+    {
+     "date": "2026-01-10",
+     "made": 4,
+     "waste": 2
+    },
+    {
+     "date": "2026-01-11",
+     "made": 4,
+     "waste": 2
+    },
+    {
+     "date": "2026-01-12",
+     "made": 4,
+     "waste": 2
+    },
+    {
+     "date": "2026-01-13",
+     "made": 4,
+     "waste": 2
+    },
+    {
+     "date": "2026-01-14",
+     "made": 4,
+     "waste": 0
+    },
+    {
+     "date": "2026-01-15",
+     "made": 4,
+     "waste": 2
+    },
+    {
+     "date": "2026-01-16",
+     "made": 4,
+     "waste": 2
+    },
+    {
+     "date": "2026-01-17",
+     "made": 4,
+     "waste": 2
+    },
+    {
+     "date": "2026-01-18",
+     "made": 4,
+     "waste": 2
+    },
+    {
+     "date": "2026-01-19",
+     "made": 4,
+     "waste": 2
+    },
+    {
+     "date": "2026-01-20",
+     "made": 4,
+     "waste": 2
+    },
+    {
+     "date": "2026-01-21",
+     "made": 4,
+     "waste": 0
+    },
+    {
+     "date": "2026-01-22",
+     "made": 4,
+     "waste": 2
+    },
+    {
+     "date": "2026-01-23",
+     "made": 4,
+     "waste": 2
+    },
+    {
+     "date": "2026-01-24",
+     "made": 4,
+     "waste": 2
+    },
+    {
+     "date": "2026-01-25",
+     "made": 4,
+     "waste": 2
+    },
+    {
+     "date": "2026-01-26",
+     "made": 4,
+     "waste": 2
+    },
+    {
+     "date": "2026-01-27",
+     "made": 4,
+     "waste": 2
+    },
+    {
+     "date": "2026-01-28",
+     "made": 4,
+     "waste": 0
+    },
+    {
+     "date": "2026-01-29",
+     "made": 4,
+     "waste": 2
+    },
+    {
+     "date": "2026-01-30",
+     "made": 4,
+     "waste": 2
+    },
+    {
+     "date": "2026-01-31",
+     "made": 4,
+     "waste": 2
+    },
+    {
+     "date": "2026-02-01",
+     "made": 4,
+     "waste": 2
+    },
+    {
+     "date": "2026-02-02",
+     "made": 4,
+     "waste": 2
+    },
+    {
+     "date": "2026-02-03",
+     "made": 4,
+     "waste": 2
+    },
+    {
+     "date": "2026-02-04",
+     "made": 4,
+     "waste": 0
+    },
+    {
+     "date": "2026-02-05",
+     "made": 4,
+     "waste": 2
+    },
+    {
+     "date": "2026-02-06",
+     "made": 4,
+     "waste": 2
+    },
+    {
+     "date": "2026-02-07",
+     "made": 4,
+     "waste": 2
+    },
+    {
+     "date": "2026-02-08",
+     "made": 4,
+     "waste": 2
+    },
+    {
+     "date": "2026-02-09",
+     "made": 4,
+     "waste": 2
+    },
+    {
+     "date": "2026-02-10",
+     "made": 4,
+     "waste": 2
+    },
+    {
+     "date": "2026-02-11",
+     "made": 4,
+     "waste": 0
+    },
+    {
+     "date": "2026-02-12",
+     "made": 4,
+     "waste": 2
+    },
+    {
+     "date": "2026-02-13",
+     "made": 4,
+     "waste": 2
+    },
+    {
+     "date": "2026-02-14",
+     "made": 4,
+     "waste": 2
+    },
+    {
+     "date": "2026-02-15",
+     "made": 4,
+     "waste": 2
+    },
+    {
+     "date": "2026-02-16",
+     "made": 4,
+     "waste": 2
+    },
+    {
+     "date": "2026-02-17",
+     "made": 4,
+     "waste": 2
+    },
+    {
+     "date": "2026-02-18",
+     "made": 4,
+     "waste": 0
+    },
+    {
+     "date": "2026-02-19",
+     "made": 4,
+     "waste": 2
+    },
+    {
+     "date": "2026-02-20",
+     "made": 4,
+     "waste": 2
+    },
+    {
+     "date": "2026-02-21",
+     "made": 4,
+     "waste": 2
+    },
+    {
+     "date": "2026-02-22",
+     "made": 4,
+     "waste": 2
+    },
+    {
+     "date": "2026-02-23",
+     "made": 4,
+     "waste": 2
+    },
+    {
+     "date": "2026-02-24",
+     "made": 4,
+     "waste": 2
+    },
+    {
+     "date": "2026-02-25",
+     "made": 4,
+     "waste": 0
+    },
+    {
+     "date": "2026-02-26",
+     "made": 4,
+     "waste": 2
+    },
+    {
+     "date": "2026-02-27",
+     "made": 4,
+     "waste": 2
+    },
+    {
+     "date": "2026-02-28",
+     "made": 4,
+     "waste": 2
+    },
+    {
+     "date": "2026-03-01",
+     "made": 4,
+     "waste": 2
+    }
+   ],
+   "expected": {
+    "breakEven": 0.39,
+    "chances": [
+     0.9515490014877547,
+     0.905445502232343,
+     0.32826908066822347,
+     0.28957094428105906,
+     0.14478547214052953,
+     0.07239273607026477
+    ],
+    "quantity": 4,
+    "recentMax": 4,
+    "testing": false,
+    "base": 2,
+    "climb": {
+     "steps": 2,
+     "days": 8,
+     "soldOut": 8,
+     "popularity": 2.2857142857142856,
+     "continuation": 0.7,
+     "confidence": 0.9948275166292133
+    }
    }
   },
   {
@@ -2457,7 +3573,9 @@
     "chances": [],
     "quantity": null,
     "recentMax": 0,
-    "testing": false
+    "testing": false,
+    "base": null,
+    "climb": null
    }
   }
  ]

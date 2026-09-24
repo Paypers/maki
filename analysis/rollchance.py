@@ -92,6 +92,43 @@ decided to make, and the operator makes extra on days they expect to be busy.
 A test that shares that blind spot cannot catch it. Profit on leftover days
 can: a roll added on a day with leftovers is a known failure.
 
+AMBITION: CLIMBING WHEN THE SELL-OUTS ARE REAL
+----------------------------------------------
+On its own the rule above is timid. When an item's demand doubles, following
+it exactly still leaves it one or two rolls short after two months (85% of
+the best profit, in simulation): every roll it has not seen sell starts at
+50/50 and each sell-out is one day of proof against five of doubt.
+
+So a climber sits on top, and it has an activation point:
+
+  * Evidence: the item's last 8 days of the same kind (promo days apart
+    from the rest) that made at least today's base amount. At least 3.
+  * Popularity: how often an extra roll sold after the usual sold out,
+    MEASURED on this kiosk by how much the item sells --
+        under 1 a day 42%,   1-2 a day 62%,   2+ a day 70%.
+  * Confidence: from how many of those days sold out (a Beta posterior on
+    the sell-out rate, uniform prior), the probability that extra roll k
+    sells at least break-even of the time:
+        P( sell-out rate x continuation^k >= break-even )
+  * It climbs k rolls when that probability clears the ambition level's
+    bar -- and never more than the level's limit, and never more extra rolls
+    across the whole case than the level's daily budget (the best bets first).
+
+        level      sure it pays   up to   extra rolls a day
+        1 careful      --           0          0       (the rule alone)
+        2 cautious    90%          +1          4
+        3 balanced    75%          +2          8       (default)
+        4 bold        60%          +3         12
+        5 max         50%          +3         16
+
+One sell-out on a slow item cannot reach the bar; the same run of sell-outs
+on a popular item can. In simulation, balanced lifts a doubling item from 85%
+to 93% of the best profit and costs nothing when demand is steady; max
+starts to cost on slow items -- which is what the app's ambition check is
+there to catch. The climbing is sell-out driven, the one signal a sell-out
+never hides (Huh & Rusmevichientong 2009 prove sell-out-driven ordering
+converges to the profit-best amount).
+
 This module is the reference implementation. `web/src/lib/model.ts` is a port
 and must agree exactly; the shared cases in
 `web/src/lib/fixtures/roll_chance_cases.json` are checked by both suites.
@@ -100,7 +137,8 @@ and must agree exactly; the shared cases in
 from __future__ import annotations
 
 import datetime
-from dataclasses import dataclass
+import math
+from dataclasses import dataclass, field
 
 from .data import History, Observation, isoweekday
 from .policies import DayContext
@@ -129,8 +167,49 @@ RECENT_SAME_WEEKDAYS = 2
 #: An item still on the menu is stocked, not delisted by a calculation.
 FLOOR = 1
 
-VERSION = (f"2.0.0-o{OTHER_WEEKDAY:g}-h{HALF_LIFE_WEEKS:g}-p{PRIOR_CONTINUATION:g}"
-           f"-m{PRIOR_STRENGTH:g}/{PRIOR_STRENGTH_DAILY:g}@{DAILY_SHARE:g}-s{STEP}-f{FLOOR}")
+#: Ambition levels: (how sure extra rolls must be to pay, most rolls above
+#: the base, most extra rolls across the case in a day). 1 never climbs.
+AMBITION: dict[int, tuple[float, int, int] | None] = {
+    1: None,
+    2: (0.90, 1, 4),
+    3: (0.75, 2, 8),
+    4: (0.60, 3, 12),
+    5: (0.50, 3, 16),
+}
+AMBITION_NAMES = {1: "careful", 2: "cautious", 3: "balanced", 4: "bold", 5: "max"}
+DEFAULT_AMBITION = 3
+#: The climber looks at this many recent days of the same kind...
+CLIMB_WINDOW = 8
+#: ...and needs at least this many of them to say anything.
+CLIMB_MIN_DAYS = 3
+#: Popularity: average sold per day over the item's last this-many days.
+POPULARITY_DAYS = 28
+#: Measured on this kiosk: after the usual amount sold out, how often the next
+#: roll sold, by popularity. (upper bound of sold per day, chance)
+CONTINUATION = ((1.0, 0.42), (2.0, 0.62), (math.inf, 0.70))
+
+VERSION = (f"2.1.0-o{OTHER_WEEKDAY:g}-h{HALF_LIFE_WEEKS:g}-p{PRIOR_CONTINUATION:g}"
+           f"-m{PRIOR_STRENGTH:g}/{PRIOR_STRENGTH_DAILY:g}@{DAILY_SHARE:g}-s{STEP}-f{FLOOR}"
+           f"-c{CLIMB_WINDOW}/{CLIMB_MIN_DAYS}")
+
+
+@dataclass(frozen=True)
+class Climb:
+    """Why the climber did, or did not, add rolls today."""
+
+    #: Rolls added on top of the base amount, before the daily budget.
+    steps: int
+    #: Recent days of the same kind that made at least the base...
+    days: int
+    #: ...and how many of them sold out.
+    sold_out: int
+    #: Average sold per day lately, and the measured chance that goes with it.
+    popularity: float
+    continuation: float
+    #: Probability the first extra roll pays (0 when there was no evidence).
+    confidence: float
+    #: The chance each added roll is expected to sell, best first.
+    edges: tuple[float, ...] = field(default=())
 
 
 @dataclass(frozen=True)
@@ -148,6 +227,9 @@ class Ladder:
     #: True when `quantity` goes above `recent_max`: a deliberate test roll.
     testing: bool
     days: int
+    #: What the rule alone says, before any climbing.
+    base: int | None = None
+    climb: Climb | None = None
 
     def chance(self, k: int) -> float:
         """Chance roll k sells. Roll 0 always "sells"; past the ladder, 0."""
@@ -213,7 +295,57 @@ def hit_the_ceiling(date: str, rows: list[Observation], ceiling: int) -> bool:
                for o in _recent(date, rows))
 
 
-def ladder_for(date: str, rows: list[Observation], break_even: float | None) -> Ladder:
+def beta_tail(a: int, b: int, x: float) -> float:
+    """P(Beta(a, b) >= x) for whole a, b: exactly P(Binomial(a+b-1, x) <= a-1)."""
+    if x <= 0:
+        return 1.0
+    if x >= 1:
+        return 0.0
+    n = a + b - 1
+    return sum(math.comb(n, j) * x ** j * (1 - x) ** (n - j) for j in range(a))
+
+
+def popularity(rows: list[Observation]) -> float:
+    recent = rows[-POPULARITY_DAYS:]
+    return sum(o.sold for o in recent) / len(recent) if recent else 0.0
+
+
+def continuation_for(pop: float) -> float:
+    for upper, chance in CONTINUATION:
+        if pop < upper:
+            return chance
+    return CONTINUATION[-1][1]
+
+
+def climb_for(date: str, rows: list[Observation], base: int, break_even: float,
+              ambition: int, promo_weekdays: tuple[int, ...] = ()) -> Climb:
+    """The activation point. See the module docstring."""
+    pop = popularity(rows)
+    cont = continuation_for(pop)
+    promo = isoweekday(date) in promo_weekdays
+    same_kind = [o for o in rows if (isoweekday(o.date) in promo_weekdays) == promo]
+    ev = [o for o in same_kind[-CLIMB_WINDOW:] if o.supply >= max(1, base)]
+    sold_out = sum(1 for o in ev if o.censored)
+    level = AMBITION.get(ambition)
+    if level is None or len(ev) < CLIMB_MIN_DAYS:
+        return Climb(0, len(ev), sold_out, pop, cont, 0.0)
+    sure, most, _budget = level
+    a, b = 1 + sold_out, 1 + len(ev) - sold_out
+    first = beta_tail(a, b, break_even / cont)
+    steps = 0
+    for k in range(1, most + 1):
+        if beta_tail(a, b, break_even / cont ** k) >= sure:
+            steps = k
+        else:
+            break
+    mean = a / (a + b)
+    return Climb(steps, len(ev), sold_out, pop, cont, first,
+                 tuple(mean * cont ** k for k in range(1, steps + 1)))
+
+
+def ladder_for(date: str, rows: list[Observation], break_even: float | None,
+               ambition: int = DEFAULT_AMBITION,
+               promo_weekdays: tuple[int, ...] = ()) -> Ladder:
     """The rule for one item. `rows` must be strictly before `date`, oldest first."""
     if len(rows) < MIN_DAYS:
         return Ladder((), (), break_even, None, 0, False, len(rows))
@@ -231,7 +363,35 @@ def ladder_for(date: str, rows: list[Observation], break_even: float | None) -> 
     q = min(q, cap + (STEP if hit_the_ceiling(date, rows, cap) else 0))
     if q < FLOOR and any(o.supply > 0 for o in rows[-10:]):
         q = FLOOR
-    return Ladder(tuple(s), tuple(evidence), break_even, q, cap, q > cap, len(rows))
+    climb = climb_for(date, rows, q, break_even, ambition, promo_weekdays)
+    total = q + climb.steps
+    return Ladder(tuple(s), tuple(evidence), break_even, total, cap, total > cap, len(rows),
+                  base=q, climb=climb)
+
+
+def apply_budget(ladders: dict[str, Ladder], ambition: int) -> dict[str, int]:
+    """Climbing rolls across the whole case, best bets first, within the
+    level's daily budget. Returns the quantity per item after the budget."""
+    level = AMBITION.get(ambition)
+    out = {k: lad.quantity for k, lad in ladders.items() if lad.quantity is not None}
+    if level is None:
+        return out
+    budget = level[2]
+    bets = []
+    for key, lad in ladders.items():
+        if lad.climb is None or lad.base is None or lad.break_even is None:
+            continue
+        for j, chance in enumerate(lad.climb.edges, start=1):
+            bets.append((-(chance - lad.break_even), key, j))
+    keep = {(key, j) for _, key, j in sorted(bets)[:budget]}
+    for key, lad in ladders.items():
+        if lad.climb is None or lad.base is None:
+            continue
+        allowed = 0
+        while (key, allowed + 1) in keep:
+            allowed += 1
+        out[key] = lad.base + allowed
+    return out
 
 
 def break_even_for(ctx: DayContext, item: str) -> float | None:
@@ -245,17 +405,22 @@ class RollChance:
     """The deployed rule. Same object the prep sheet and the backtest use."""
 
     name = "roll_chance"
-    version = VERSION
+
+    def __init__(self, ambition: int = DEFAULT_AMBITION):
+        if ambition not in AMBITION:
+            raise ValueError(f"ambition must be 1-5, not {ambition!r}")
+        self.ambition = ambition
+        self.version = f"{VERSION}-a{ambition}"
 
     def ladder(self, ctx: DayContext, item: str) -> Ladder:
-        return ladder_for(ctx.date, ctx.history.for_item(item), break_even_for(ctx, item))
+        return ladder_for(ctx.date, ctx.history.for_item(item), break_even_for(ctx, item),
+                          self.ambition, tuple(ctx.costs.promo_weekdays))
 
     def recommend(self, ctx: DayContext) -> dict[str, float]:
-        out: dict[str, float] = {}
-        for item in ctx.items:
-            q = self.ladder(ctx, item).quantity
-            out[item] = float("nan") if q is None else float(q)
-        return out
+        ladders = {item: self.ladder(ctx, item) for item in ctx.items}
+        budgeted = apply_budget(ladders, self.ambition)
+        return {item: float(budgeted[item]) if item in budgeted else float("nan")
+                for item in ctx.items}
 
 
 def ordinal(n: int) -> str:

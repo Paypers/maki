@@ -71,6 +71,19 @@ def _cases() -> list[dict]:
          "days": _days([(n, 2, 2) for n in range(42)])},
         {"name": "on the list but never made: stays at zero", "date": _d(42), "price": 8.0,
          "unitCost": 2.0, "days": _days([(n, 0, 0) for n in range(42)])},
+        {"name": "a popular item climbing, balanced", "date": _d(42), "price": 8.99,
+         "unitCost": 2.03, "share": 0.8, "ambition": 3,
+         "days": _days([(n, 3, 0) for n in range(35)] + [(n, 4, 0 if n % 5 else 1) for n in range(35, 42)])},
+        {"name": "the same item, bold", "date": _d(42), "price": 8.99,
+         "unitCost": 2.03, "share": 0.8, "ambition": 4,
+         "days": _days([(n, 3, 0) for n in range(35)] + [(n, 4, 0 if n % 5 else 1) for n in range(35, 42)])},
+        {"name": "the same item, careful", "date": _d(42), "price": 8.99,
+         "unitCost": 2.03, "share": 0.8, "ambition": 1,
+         "days": _days([(n, 3, 0) for n in range(35)] + [(n, 4, 0 if n % 5 else 1) for n in range(35, 42)])},
+        {"name": "promo Wednesday judged on Wednesdays", "date": _d(58), "price": 10.0,
+         "unitCost": 2.6, "promoWeekdays": [3], "ambition": 5,
+         "days": _days([(n, 4, 0 if (START + datetime.timedelta(days=n)).isoweekday() == 3 else 2)
+                        for n in range(56)])},
         {"name": "six days only: no opinion", "date": _d(6), "price": 8.0, "unitCost": 2.0,
          "days": _days([(n, 3, n % 2) for n in range(6)])},
     ]
@@ -85,9 +98,15 @@ def _solve(case: dict) -> dict:
                         wasted=float(x["waste"])) for x in case["days"]]
     ctx = DayContext(date=case["date"], items=("x",),
                      history=History([o for o in rows if o.date < case["date"]]), costs=costs)
-    lad = rc.RollChance().ladder(ctx, "x")
+    lad = rc.RollChance(case.get("ambition", rc.DEFAULT_AMBITION)).ladder(ctx, "x")
+    climb = lad.climb
     return {"breakEven": lad.break_even, "chances": list(lad.chances),
-            "quantity": lad.quantity, "recentMax": lad.recent_max, "testing": lad.testing}
+            "quantity": lad.quantity, "recentMax": lad.recent_max, "testing": lad.testing,
+            "base": lad.base,
+            "climb": None if climb is None else {
+                "steps": climb.steps, "days": climb.days, "soldOut": climb.sold_out,
+                "popularity": climb.popularity, "continuation": climb.continuation,
+                "confidence": climb.confidence}}
 
 
 def build() -> dict:

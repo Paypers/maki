@@ -1312,3 +1312,18 @@ p.hint.money-note { font-size: 11.5px; color: var(--text-secondary);
 .sheet-estimate { margin: var(--s2) 0 var(--s3); }
 .sheet-estimate .stats { margin-top: var(--s2); }
 .sheet-cols.money, .sheet-line.money { grid-template-columns: minmax(0, 1fr) 44px 40px 66px; }
+
+/* ---- 14. ambition ------------------------------------------------------ */
+/* The verdict is carried by the icon and the words; colour only repeats it,
+   using the status tokens: good (paying), critical (too high), rule (room). */
+.card.ambition { padding: var(--s3) var(--s4); }
+.amb-line { display: flex; gap: 8px; align-items: flex-start; margin: var(--s2) 0 0;
+            font-size: 14px; line-height: 1.4; color: var(--text-primary); }
+.amb-line .ico { flex: none; margin-top: 2px; color: var(--text-secondary); }
+.ambition.v-paying .amb-line .ico { color: var(--good-ink); }
+.ambition.v-too-high .amb-line .ico { color: var(--critical-ink); }
+.ambition.v-room .amb-line .ico { color: var(--rule-ink); }
+.ambition.v-too-high { border-color: var(--critical-ink); }
+.hint-inline.amb-extra { display: block; margin-top: 6px; }
+.ambition-levels button { font-size: 12.5px; padding: 0 2px; white-space: nowrap; }
+.card p.hint.ambition-says { margin-top: var(--s2); color: var(--text-primary); }

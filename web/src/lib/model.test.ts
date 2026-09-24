@@ -95,10 +95,12 @@ describe("matches the Python implementation", () => {
   // fails the Python suite; a drifted port fails here.
   interface Case {
     name: string; date: string; price: number; unitCost: number;
-    promoWeekdays?: number[]; labour?: number; share?: number;
+    promoWeekdays?: number[]; labour?: number; share?: number; ambition?: number;
     days: { date: string; made: number; waste: number }[];
     expected: { breakEven: number | null; chances: number[]; quantity: number | null;
-                recentMax: number; testing: boolean };
+                recentMax: number; testing: boolean; base: number | null;
+                climb: { steps: number; days: number; soldOut: number; popularity: number;
+                         continuation: number; confidence: number } | null };
   }
 
   it("is testing the same rule version", () => {
@@ -119,9 +121,18 @@ describe("matches the Python implementation", () => {
       });
       const rec = recommendFor(c.date, [item], null, entries, {
         promoWeekdays: c.promoWeekdays ?? [], promoMultiplier: 2 / 3,
-        labourPerRoll: c.labour ?? 0, saleShare: c.share ?? 1,
+        labourPerRoll: c.labour ?? 0, saleShare: c.share ?? 1, ambition: c.ambition ?? 3,
       }).recommendations[0];
       expect(rec.modelQty).toBe(c.expected.quantity);
+      expect(rec.ruleQty).toBe(c.expected.base);
+      if (c.expected.climb === null) expect(rec.climb).toBeNull();
+      else {
+        const x = c.expected.climb;
+        expect(rec.climb).toMatchObject({ steps: x.steps, days: x.days, soldOut: x.soldOut,
+                                          continuation: x.continuation });
+        expect(rec.climb!.popularity).toBeCloseTo(x.popularity, 12);
+        expect(rec.climb!.confidence).toBeCloseTo(x.confidence, 12);
+      }
       expect(rec.recentMax).toBe(c.expected.recentMax);
       expect(rec.testing).toBe(c.expected.testing);
       if (c.expected.breakEven === null) expect(rec.breakEven).toBeNull();
@@ -184,7 +195,9 @@ describe("recommendations", () => {
   });
 
   it("quotes the chance against the break-even otherwise", () => {
-    const set = recommendFor(day(40), [ITEM], null, history(40, 10, (i) => i % 2 ? 1 : 0), []);
+    // Sells out two days in five: not enough for the climber to act on, and
+    // not enough leftovers to be described as a trim.
+    const set = recommendFor(day(40), [ITEM], null, history(40, 10, (i) => i % 5 < 2 ? 0 : 1), []);
     expect(set.recommendations[0].reason).toMatch(/needs 25%$/);
   });
 
@@ -235,6 +248,49 @@ describe("recommendations", () => {
                                 { labourPerRoll: 1, saleShare: 0.75 }).recommendations[0];
     expect(costly.breakEven!).toBeCloseTo(3.5 / 7.5, 10);
     expect(costly.modelQty!).toBeLessThanOrEqual(plain.modelQty!);
+  });
+});
+
+describe("ambition", () => {
+  // Made 4 for a week, sold out on all but one day: a popular item that
+  // keeps running out. The base rule stays at 4; any more is the climber.
+  const hot = [...history(35, 3, () => 0),
+               ...Array.from({ length: 7 }, (_, i) => i + 35).flatMap((n) =>
+                 n % 5 ? [entry(n, "made", 4)] : [entry(n, "made", 4), entry(n, "waste", 1)])];
+  const pricey: Item = { ...ITEM, price: 8.99, unitCost: 2.03 };
+  const at = (ambition: number) =>
+    recommendFor(day(42), [pricey], null, hot, { ambition, saleShare: 0.8, promoWeekdays: [] })
+      .recommendations[0];
+
+  it("careful never climbs", () => {
+    const rec = at(1);
+    expect(rec.climbSteps).toBe(0);
+    expect(rec.modelQty).toBe(rec.ruleQty);
+  });
+
+  it("climbs a popular item that keeps selling out, more at higher levels", () => {
+    const steps = [1, 2, 3, 4, 5].map((a) => at(a).climbSteps!);
+    expect(steps[2]).toBeGreaterThanOrEqual(1);
+    expect(steps).toEqual([...steps].sort((a, b) => a - b));
+    expect(at(3).reason).toMatch(/^climbing \+\d · sold out \d+ of last \d+$/);
+  });
+
+  it("says why, in the rule's own terms, when you are below it", () => {
+    const rec = at(3);
+    expect(explainRoll(rec, rec.ruleQty!)).toMatch(/^climbing: sold out \d+ of last \d+ · \d+% sure a \d+(st|nd|rd|th) pays$/);
+  });
+
+  it("does not climb on one sell-out of a slow item", () => {
+    const slow = [...history(41, 1, () => 1), entry(41, "made", 1)];
+    const rec = recommendFor(day(42), [pricey], null, slow, { ambition: 5, saleShare: 0.8 })
+      .recommendations[0];
+    expect(rec.climbSteps).toBe(0);
+  });
+
+  it("names the ambition in the model version and in the day's notes", () => {
+    const set = recommendFor(day(42), [pricey], null, hot, { ambition: 4, saleShare: 0.8, promoWeekdays: [] });
+    expect(set.recommendations[0].modelVersion).toMatch(/-a4$/);
+    expect(set.notes[0]).toMatch(/^Ambition bold: trying \d+ extra roll/);
   });
 });
 
@@ -291,7 +347,7 @@ describe("quantity floor", () => {
 
   it("carries every setting in the model version, so stored recs stay attributable", () => {
     const set = recommendFor(day(40), [ITEM], null, history(40, 10, () => 2), []);
-    expect(set.recommendations[0].modelVersion).toBe("2.0.0-o0.3-h3-p0.5-m5/1@0.9-s1-f1");
+    expect(set.recommendations[0].modelVersion).toBe("2.1.0-o0.3-h3-p0.5-m5/1@0.9-s1-f1-c8/3-a3");
   });
 });
 

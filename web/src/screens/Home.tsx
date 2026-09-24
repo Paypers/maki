@@ -33,6 +33,7 @@ import { ScreenHeader } from "../components/ScreenHeader";
 import { syncStatus } from "../lib/cloud";
 import { MoneyNote, PeriodCard } from "../components/Money";
 import { monthOf, projectPeriod, share, usd, usdShort, weekOf } from "../lib/money";
+import type { AmbitionCheck } from "../lib/ambition";
 
 export interface DaySummary {
   date: BizDate;
@@ -50,7 +51,8 @@ export interface DaySummary {
 }
 
 export type HomeTarget =
-  | "make" | "count" | "history" | "templates" | "items" | "weather" | "cloud" | "reconcile";
+  | "make" | "count" | "history" | "templates" | "items" | "weather" | "cloud" | "reconcile"
+  | "settings";
 
 interface Props {
   today: BizDate;
@@ -61,6 +63,8 @@ interface Props {
   outlook: TodayOutlook;
   settings: Settings;
   itemCount: number;
+  /** Is the ambition level paying? Null while loading. */
+  ambition: AmbitionCheck | null;
   onOpen: (task: Task) => void;
   onGo: (target: HomeTarget) => void;
   onPickDay: (date: BizDate) => void;
@@ -71,6 +75,34 @@ function taskLabel(t: Task, today: BizDate): { what: string; when: string } {
   return t.kind === "waste"
     ? { what: "Count leftovers", when }
     : { what: "Enter what you made", when };
+}
+
+/**
+ * The ambition marker: the level, one verdict, and the way to change it.
+ * The icon and the words carry the verdict; colour only repeats it.
+ */
+function AmbitionCard({ check, onChange }: { check: AmbitionCheck; onChange: () => void }) {
+  const icon: IconName = check.verdict === "too-high" ? "alert"
+    : check.verdict === "paying" ? "check"
+    : check.verdict === "room" ? "chart" : "clock";
+  const e = check.extra;
+  return (
+    <section className={`card ambition v-${check.verdict}`} aria-label="Ambition">
+      <div className="head-row">
+        <div className="eyebrow">Ambition · {check.name}</div>
+        <button className="link" onClick={onChange}>Change</button>
+      </div>
+      <p className="amb-line"><Icon name={icon} size={16} className="ico" /><span>{check.headline}</span></p>
+      {e.made > 0 && (
+        <p className="hint-inline amb-extra">
+          Extra rolls, last {check.recent.days} counted days: made <strong className="num">{e.made}</strong>,
+          sold <strong className="num">{e.sold}</strong>,{" "}
+          <strong className="num">{e.dollars < 0 ? "\u2212" : "+"}${Math.abs(Math.round(e.dollars))}</strong> after costs
+          {e.made < 8 ? " — too few to judge yet." : "."}
+        </p>
+      )}
+    </section>
+  );
 }
 
 function ageLabel(ageDays: number): string {
@@ -95,7 +127,7 @@ function Tile({ icon, label, sub, tone, onClick }: {
 }
 
 export function Home({
-  today, tasks, pending, summary, stats, outlook, settings, itemCount,
+  today, tasks, pending, summary, stats, outlook, settings, itemCount, ambition,
   onOpen, onGo, onPickDay,
 }: Props) {
   const known = summary?.trend.filter((v): v is number => v !== null) ?? [];
@@ -167,6 +199,8 @@ export function Home({
           <p className="hint-inline">Today's production is in and every past day has been counted.</p>
         </section>
       )}
+
+      {ambition && <AmbitionCard check={ambition} onChange={() => onGo("settings")} />}
 
       <section aria-label="Money">
         <PeriodCard title="This week" p={weekMoney} keepShare={keep} />

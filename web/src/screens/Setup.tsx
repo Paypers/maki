@@ -10,6 +10,7 @@
 
 import { useState } from "react";
 import type { Settings } from "../lib/types";
+import { AMBITION_NAMES } from "../lib/model";
 import { CANONICAL_HOST } from "../lib/canonical";
 import { checkForUpdate } from "../lib/appUpdate";
 import * as cloud from "../lib/cloud";
@@ -71,6 +72,8 @@ export function Setup({ settings, itemCount, pending, onOpen }: Props) {
 
       <h2 className="setgroup">Planning</h2>
       <section className="setlist">
+        <Row label="Ambition" value={AMBITION_NAMES[settings.ambition] ?? "Balanced"}
+             tone="rule" onClick={() => onOpen("settings")} />
         <Row label="Rule suggestions on Make" value={settings.showSuggestions ? "On" : "Off"}
              tone={settings.showSuggestions ? "rule" : "dim"} onClick={() => onOpen("settings")} />
         <Row label="Promo days" value={promo} onClick={() => onOpen("settings")} />

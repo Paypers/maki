@@ -146,7 +146,8 @@ class TestReasons:
         assert any("one extra roll at a time" in n for n in sheet.notes)
 
     def test_the_reason_quotes_the_chance_and_the_break_even(self):
-        history = [obs(i, made=10, wasted=1 if i % 2 else 0) for i in range(40)]
+        # Leftovers on three days in four: nothing for the climber to act on.
+        history = [obs(i, made=10, wasted=2 if i % 4 else 0) for i in range(40)]
         sheet = build_prep_sheet(d(40), history, cfg())
         # cost 2.5 / price 10: a roll is worth making if it sells 25% of days.
         assert "needs 25%" in sheet.lines[0].reason
@@ -157,6 +158,13 @@ class TestReasons:
         reason = sheet.lines[0].reason
         assert reason.startswith("left over 60 across last 10")
         assert "a 5th sells" in reason and "needs 25%" in reason
+
+
+    def test_a_climbing_line_says_why(self):
+        history = [obs(i, made=10, wasted=1 if i % 2 else 0) for i in range(40)]
+        line = build_prep_sheet(d(40), history, cfg()).lines[0]
+        assert "climbing +" in line.reason and "sold out" in line.reason
+        assert line.caveat and "ambition" in line.caveat
 
 
 class TestTemplateIntegration:

@@ -139,6 +139,11 @@ def _reason(
 
     q, be = ladder.quantity, ladder.break_even
     needs = f"needs {pct(be)}"
+    climb = ladder.climb
+    if climb is not None and climb.steps > 0:
+        return (f"sold out {climb.sold_out} of last {climb.days} - climbing +{climb.steps}",
+                f"ambition: {pct(climb.confidence)} sure the next roll sells at least "
+                f"{pct(be)} of days (sells ~{climb.popularity:.1f} a day)")
     if ladder.testing:
         return (f"sold out {sellouts} of last {len(recent)} - testing a {ordinal(q)} "
                 f"(~{pct(ladder.chance(q))}, {needs})",

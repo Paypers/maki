@@ -19,6 +19,7 @@ import { useEffect, useRef, useState } from "react";
 import * as store from "../lib/store";
 import { downloadBackup } from "../lib/backup";
 import type { Settings as SettingsType } from "../lib/types";
+import { AMBITION, AMBITION_NAMES } from "../lib/model";
 import { Icon } from "../components/Icon";
 
 const WEEKDAYS = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
@@ -26,6 +27,16 @@ const WEEKDAYS = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
 interface Props {
   onBack: () => void;
   onChanged: () => void;
+}
+
+function ambitionSays(level: number): string {
+  const l = AMBITION[level];
+  if (!l) return "Careful: only what your record proves. It never adds a roll it hasn't seen sell.";
+  const [sure, most, budget] = l;
+  const lead = level === 3 ? "Balanced (recommended)" : AMBITION_NAMES[level];
+  const tail = level === 5 ? " Expect more leftovers — this takes near even-odds bets." : "";
+  return `${lead}: adds a roll only when ${Math.round(sure * 100)}% sure it pays; up to ${most} extra ` +
+    `on an item, ${budget} extra across the case a day.${tail}`;
 }
 
 export function Settings({ onBack, onChanged }: Props) {
@@ -53,6 +64,14 @@ export function Settings({ onBack, onChanged }: Props) {
     setDraft(next);
     void store.saveSettings(next).then(onChanged);
   };
+
+  /** A new level starts a new trial: the ambition check judges it from today. */
+  function setAmbition(level: number) {
+    if (!draft || draft.ambition === level) return;
+    const next = { ...draft, ambition: level, ambitionSince: store.today(draft.rolloverHour) };
+    setDraft(next);
+    void store.saveSettings(next).then(onChanged);
+  }
 
   function toggleWeekday(index: number) {
     const day = index + 1;
@@ -114,6 +133,28 @@ export function Settings({ onBack, onChanged }: Props) {
         <button className="ghost" onClick={onBack} aria-label="Back"><Icon name="back" size={20} /></button>
         <h1>Settings</h1>
       </header>
+
+      <div className="card">
+        <h2>Ambition</h2>
+        <p className="hint">
+          How hard the suggestions push items that keep selling out. It only
+          acts on an item that has sold out on several of its last 8 days —
+          one sell-out on a slow item never sets it off — and only adds a roll
+          when it's sure enough that roll pays for itself.
+        </p>
+        <div className="tabs ambition-levels" role="group" aria-label="Ambition level">
+          {[1, 2, 3, 4, 5].map((a) => (
+            <button key={a} aria-pressed={draft.ambition === a} onClick={() => setAmbition(a)}>
+              {AMBITION_NAMES[a]}
+            </button>
+          ))}
+        </div>
+        <p className="hint ambition-says">{ambitionSays(draft.ambition)}</p>
+        <p className="hint">
+          Today's screen tells you whether the level is paying — and if the
+          extra rolls start coming back, it will say so and suggest a step down.
+        </p>
+      </div>
 
       <div className="card">
         <h2>Appearance</h2>

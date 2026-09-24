@@ -25,7 +25,9 @@ sys.path.insert(0, ROOT)
 from analysis.data import add_days, load_observations, outage_dates_from  # noqa: E402
 from analysis.evidence import calibration, compare, extra_roll_rate  # noqa: E402
 from analysis.policies import SameWeekdayQuantile  # noqa: E402
-from analysis.rollchance import PRIOR_CONTINUATION, RollChance  # noqa: E402
+from analysis.rollchance import (  # noqa: E402
+    AMBITION_NAMES, DEFAULT_AMBITION, PRIOR_CONTINUATION, RollChance,
+)
 
 _spec = importlib.util.spec_from_file_location(
     "run_backtest", os.path.join(ROOT, "tools", "run_backtest.py"))
@@ -42,6 +44,8 @@ def main(argv: list[str] | None = None) -> int:
     ap.add_argument("--keep", type=float, default=None,
                     help="share of each sale you keep (default: run_backtest.SALE_SHARE)")
     ap.add_argument("--items", action="store_true", help="also print the per-item table")
+    ap.add_argument("--ambition", type=int, default=None,
+                    help="1-5; default: compare every level")
     args = ap.parse_args(argv)
 
     obs = load_observations(os.path.join(args.extract_dir, "daily_log.csv"),
@@ -82,9 +86,14 @@ def main(argv: list[str] | None = None) -> int:
 
     old = SameWeekdayQuantile(window=8, min_observations=4)
     old.name = "old rule"
-    new = RollChance()
-    new.name = "per-roll rule"
-    cmp = compare(obs, [old, new], costs, start=start, end=end,
+    levels = [args.ambition] if args.ambition else sorted(AMBITION_NAMES)
+    rules = [old]
+    for a in levels:
+        r = RollChance(a)
+        r.name = f"per-roll, {AMBITION_NAMES[a]}" + (" *" if a == DEFAULT_AMBITION else "")
+        rules.append(r)
+    new = rules[-1] if args.ambition else rules[DEFAULT_AMBITION]
+    cmp = compare(obs, rules, costs, start=start, end=end,
                   continuation=extra_roll_rate(obs).rate)
     print("\n3. PROFIT PER DAY  (estimate [worst .. best] where rolls above what you made"
           " on a sold-out day are unknowable)")
@@ -100,9 +109,9 @@ def main(argv: list[str] | None = None) -> int:
     if args.items:
         print("\n   per item, whole stretch:  you $ (made/left)  |  per-roll rule ~$ [worst..best] (made/left~)")
         rows = sorted(cmp.by_item.items(),
-                      key=lambda kv: kv[1]["per-roll rule"]["profit_est"] - kv[1]["you"]["profit"])
+                      key=lambda kv: kv[1][new.name]["profit_est"] - kv[1]["you"]["profit"])
         for item, d in rows:
-            u, r = d["you"], d["per-roll rule"]
+            u, r = d["you"], d[new.name]
             print(f"   {item:28s} ${u['profit']:7.0f} ({u['made']:4.0f}/{u['left']:3.0f})  |  "
                   f"~${r['profit_est']:7.0f} [{r['profit_low']:6.0f}..{r['profit_high']:6.0f}] "
                   f"({r['made']:4.0f}/{r['left_est']:5.1f})")

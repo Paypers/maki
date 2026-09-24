@@ -87,6 +87,11 @@ export interface Recommendation {
   /** The suggestion is one above the most made lately: a test roll. */
   testing?: boolean;
   recentMax?: number;
+  /** What the rule says before the climber adds anything. */
+  ruleQty?: number | null;
+  /** The climber's evidence, and how many rolls it kept after the budget. */
+  climb?: import("./model").Climb | null;
+  climbSteps?: number;
 }
 
 export interface QueuedMutation {
@@ -140,6 +145,12 @@ export interface Settings {
   /** Share of each sale that reaches you, 0-1. One unless the store takes a
    *  cut; a 25% cut is 0.75, and it raises every break-even by a third. */
   saleShare: number;
+  /** How hard the rule pushes items that keep selling out: 1 (careful,
+   *  never) to 5 (max). See model.ts AMBITION. */
+  ambition: number;
+  /** When the ambition level was last changed, so its effect can be judged
+   *  against the days before. Null until it is first changed. */
+  ambitionSince: string | null;
   /** Show the model's suggestion as a delta beside your own number. */
   showSuggestions: boolean;
   kioskName: string;
@@ -178,6 +189,8 @@ export const DEFAULT_SETTINGS: Settings = {
   // The middle man takes 20% of all sales (operator, 2026-09-23). A default
   // rather than a hard-coded fact: it changes in Settings if the deal does.
   saleShare: 0.8,
+  ambition: 3,
+  ambitionSince: null,
   showSuggestions: true,
   theme: "system",
   location: null,

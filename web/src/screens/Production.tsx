@@ -76,6 +76,7 @@ export function Production({
       salvage: settings.salvage,
       labourPerRoll: settings.labourPerRoll,
       saleShare: settings.saleShare,
+      ambition: settings.ambition,
       counted,
     }),
     [date, items, template, history, settings, counted],

@@ -201,6 +201,35 @@ lobster volcano, tuna avocado — its estimated gains are test rolls on the
 inaris, crab volcano and rainbow tuna, and the operator beats it on lobster
 tuna sandwich and crunchy spicy tuna.
 
+### Ambition: climbing when the sell-outs are real
+
+On its own the rule is timid: following it exactly while an item's demand
+doubles still leaves it one or two rolls short after two months (85% of the
+best profit, in simulation). A climber sits on top with an activation point:
+an item must have sold out on enough of its last 8 days of the same kind (at
+least 3 days of evidence), and the extra roll must be likely enough to pay --
+judged with the measured chance that an extra roll sells after a sell-out, by
+popularity (**42%** for items selling under 1 a day, **62%** for 1-2, **70%**
+for 2+). How sure it must be is the **ambition level**, set in Settings:
+
+| level | sure it pays | up to | extra rolls a day |
+|---|---|---|---|
+| Careful | — | 0 | 0 (the rule alone) |
+| Cautious | 90% | +1 | 4 |
+| **Balanced** (default) | 75% | +2 | 8 |
+| Bold | 60% | +3 | 12 |
+| Max | 50% | +3 | 16 |
+
+Simulation: a doubling item goes from 85% to 93% (Balanced) / 95% (Bold) of the
+best profit; steady and falling demand are unchanged. On the real record the
+levels land within about $1 a day of each other, with up to 5 more rolls left
+over a day at Max -- a record cannot show what never-made rolls would have
+sold, which is where the climber earns. So it is judged live: the **ambition
+check** on Today settles every extra roll the climber suggested and you made
+(exact: each sold or came back), compares waste and profit since the level was
+set against the four weeks before, and says *paying*, *too high*, *room to
+push*, *steady* or *too early*.
+
 References: Arrow, Harris & Marschak (1951) for the critical fractile; Kaplan
 & Meier (1958); Beran (1981) for the weighted, conditional form; Huh,
 Levi, Rusmevichientong & Orlin (2011), *Operations Research* 59(4), and Huh &
@@ -511,7 +540,7 @@ npm run wx:verify                           # the import, and that the sync sett
 npm run wx:shots                            # the weather card, light and dark
 ```
 
-Tests: `python -m pytest tests/ -q` (**227**) and `cd web && npm test` (**192**).
+Tests: `python -m pytest tests/ -q` (**236**) and `cd web && npm test` (**207**).
 
 The operator's real workbook and all extracted data stay out of version control;
 `tests/fixtures/fixture.xlsx` is a committed, anonymised stand-in that reproduces
