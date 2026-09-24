@@ -9,9 +9,12 @@
  *   owed          every job still owed, oldest first; a row per job, standing
  *                 until it is done -- the failure mode is forgetting, not
  *                 getting it wrong
+ *   money         this week and this month: counted so far, projected to the
+ *                 end, and where the sales went -- profit, the middle man,
+ *                 ingredients, and what was thrown away
  *   everything    nine tiles, one per part of the app, each with its live
  *                 state, so nothing is ever more than one tap from here
- *   the week      what came back each of the last seven days
+ *   the week      profit and leftovers for each of the last seven days
  *
  * Colour has one meaning each: amber is owed by you, blue is the rule's
  * number, green is saved, red is late.
@@ -28,6 +31,8 @@ import { TodayCard } from "../components/TodayCard";
 import { Sparkline } from "../components/Sparkline";
 import { ScreenHeader } from "../components/ScreenHeader";
 import { syncStatus } from "../lib/cloud";
+import { MoneyNote, PeriodCard } from "../components/Money";
+import { monthOf, projectPeriod, share, usd, usdShort, weekOf } from "../lib/money";
 
 export interface DaySummary {
   date: BizDate;
@@ -40,6 +45,8 @@ export interface DaySummary {
   trend: Array<number | null>;
   /** Waste cost per day over the same window. */
   costTrend: Array<number | null>;
+  /** Profit per day over the same window; null = not counted. */
+  profitTrend: Array<number | null>;
 }
 
 export type HomeTarget =
@@ -103,6 +110,18 @@ export function Home({
     return stats.byDate.get(d) ?? emptyDay(d, today);
   });
 
+  const [wFrom, wTo] = weekOf(today);
+  const [mFrom, mTo] = monthOf(today);
+  const weekMoney = projectPeriod(stats, today, wFrom, wTo);
+  const monthMoney = projectPeriod(stats, today, mFrom, mTo);
+  const keep = settings.saleShare ?? 1;
+  const knownProfit = summary?.profitTrend.filter((v): v is number => v !== null) ?? [];
+  const profitAvg = knownProfit.length
+    ? knownProfit.reduce((a, b) => a + b, 0) / knownProfit.length : null;
+  const lastCounted = [...stats.dates].reverse()
+    .map((d) => stats.byDate.get(d)!)
+    .find((d) => d.date < today && d.profit !== null && d.sales !== null);
+
   const owedCounts = tasks.filter((t) => t.kind === "waste").length;
   const owedMake = tasks.some((t) => t.kind === "production" && t.date === today);
   const todayStat = stats.byDate.get(today);
@@ -149,6 +168,12 @@ export function Home({
         </section>
       )}
 
+      <section aria-label="Money">
+        <PeriodCard title="This week" p={weekMoney} keepShare={keep} />
+        <PeriodCard showRange={false} p={monthMoney} keepShare={keep}
+                    title={`This month · ${new Date(`${mFrom}T12:00:00`).toLocaleDateString(undefined, { month: "long" })}`} />
+      </section>
+
       <nav className="tiles" aria-label="Everything">
         <Tile icon="list" label="Make"
               sub={owedMake ? "today's list" : todayStat?.made ? `${todayStat.made} made today` : "any day"}
@@ -157,7 +182,7 @@ export function Home({
               sub={owedCounts ? `${owedCounts} ${owedCounts === 1 ? "day" : "days"} owed` : "all counted"}
               tone={owedCounts ? "owed" : "ok"} onClick={() => onGo("count")} />
         <Tile icon="calendar" label="Calendar" sub="any day" onClick={() => onGo("history")} />
-        <Tile icon="chart" label="Reports" sub="waste · sell-outs" onClick={() => onGo("history")} />
+        <Tile icon="chart" label="Reports" sub="money · waste · sell-outs" onClick={() => onGo("history")} />
         <Tile icon="clock" label="Usual amounts" sub="per weekday" onClick={() => onGo("templates")} />
         <Tile icon="settings" label="Menu & costs" sub={`${itemCount} items`} onClick={() => onGo("items")} />
         <Tile icon="cloud" label="Weather"
@@ -168,13 +193,13 @@ export function Home({
         <Tile icon="search" label="Sheet check" sub="vs paper sheet" onClick={() => onGo("reconcile")} />
       </nav>
 
-      <section className="card week-card" aria-label="Left over, last 7 days">
+      <section className="card week-card" aria-label="Profit and left over, last 7 days">
         <div className="head-row">
-          <div className="eyebrow">Left over · last 7 days</div>
+          <div className="eyebrow">Last 7 days · profit · left over</div>
           {trendAvg !== null && (
             <span className="hint-inline">
-              avg <strong className="num">{trendAvg}</strong>/day
-              {costAvg !== null && costAvg > 0 && <> · <strong className="num">${Math.round(costAvg)}</strong>/day</>}
+              avg{profitAvg !== null && <> <strong className="num">{usd(profitAvg)}</strong> ·</>}
+              {" "}<strong className="num">{trendAvg}</strong> left
             </span>
           )}
         </div>
@@ -193,29 +218,50 @@ export function Home({
                 <span className="wd">{weekdayName(d.date).slice(0, 1)} {Number(d.date.slice(-2))}</span>
                 {/* "?" means never counted, which is a fault. Today is not a
                     fault -- its leftovers are still in the case. */}
-                <span className="wv num">
-                  {d.phase === "outage" ? "—"
-                    : d.wasted !== null ? d.wasted
+                <span className="wp num">
+                  {d.profit !== null ? usdShort(d.profit)
+                    : d.phase === "outage" ? "closed"
                     : d.date === today ? "today"
                     : d.phase === "open" ? "?" : ""}
+                </span>
+                <span className="wv num">
+                  {d.phase === "outage" ? ""
+                    : d.wasted !== null ? `${d.wasted} left`
+                    : d.phase === "open" && d.date !== today ? "not counted" : ""}
                 </span>
               </button>
             );
           })}
         </div>
+        {lastCounted && lastCounted.sales !== null && lastCounted.profit !== null && (
+          <p className="hint-inline week-last">
+            {weekdayName(lastCounted.date).slice(0, 3)} {formatShort(lastCounted.date)}:
+            {" "}sold <strong className="num">{usd(lastCounted.sales)}</strong>,
+            profit <strong className="num">{usd(lastCounted.profit)}</strong>
+            {" "}({share(lastCounted.profit, lastCounted.sales)}),
+            thrown away <strong className="num">{usd(lastCounted.wasteCost ?? 0)}</strong>
+            {" "}({share(lastCounted.wasteCost ?? 0, lastCounted.sales)} of sales). Tap a day for the receipt.
+          </p>
+        )}
       </section>
+
+      <MoneyNote keepShare={keep} />
 
       {known.length >= 3 && summary && (
         <section className="card" aria-label="Left over, last 14 days">
           <div className="head-row">
-            <div className="eyebrow">Left over · last 14 days</div>
+            <div className="eyebrow">Profit · last 14 days</div>
             <span className="hint-inline">gaps = never counted</span>
+          </div>
+          <Sparkline values={summary.profitTrend} width={330} height={40} className="trend-spark cost" />
+          <div className="head-row" style={{ marginTop: 12 }}>
+            <div className="eyebrow">Left over</div>
           </div>
           <Sparkline values={summary.trend} width={330} height={40} className="trend-spark" />
           {costAvg !== null && costAvg > 0 && (
             <>
               <div className="head-row" style={{ marginTop: 12 }}>
-                <div className="eyebrow">What it cost</div>
+                <div className="eyebrow">Thrown away, $</div>
               </div>
               <Sparkline values={summary.costTrend} width={330} height={40}
                          className="trend-spark cost" hot />

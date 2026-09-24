@@ -1,23 +1,32 @@
 /**
- * The month, as a grid.
+ * The month, as a grid of numbers.
  *
- * Two things are encoded per day and they are deliberately separate channels,
- * because mixing them is how a calendar becomes unreadable:
+ * Each day shows ONE number, and a switch above the grid says which: profit,
+ * sales, what was thrown away, or rolls left over. A number, not a shaded
+ * bar: the bar this replaced ("how full is the square") had to be decoded
+ * against the worst day on screen, and nobody could say what half-full meant.
  *
- *   STATUS  -- does this day need something from you? An amber ring. Rare by
- *              design: most days should be finished.
- *   WASTE   -- how much came back? A bar along the bottom of the cell, in ink,
- *              scaled against the worst day on screen.
+ * Every mark has one meaning, spelled out in the key under the grid:
+ *   $148      counted -- what really happened
+ *   ~$140     not happened yet -- projected from recent same weekdays
+ *   ?         traded but leftovers never counted -- unknown, and owed
+ *   —         a past day with nothing entered -- counts as $0
+ *   amber ring  needs something from you
+ *   dashed      today
  *
- * So a glance answers "what do I owe?" and a second glance answers "how has
- * the month gone?", without either question interfering with the other.
+ * Under the grid: the weeks of the month, then the month itself -- counted so
+ * far, projected to the end, and where the money went.
  */
 
 import { useMemo, useState } from "react";
 import type { BizDate } from "../lib/businessDay";
 import { addDays, formatShort, fromBizDate, isoWeekday, toBizDate } from "../lib/businessDay";
-import type { DayStatIndex } from "../lib/dayStats";
-import { emptyDay, wasteRate } from "../lib/dayStats";
+import type { DayStat, DayStatIndex } from "../lib/dayStats";
+import { emptyDay } from "../lib/dayStats";
+import {
+  estimateDay, monthOf, projectPeriod, share, usd, usdShort,
+} from "../lib/money";
+import { MoneyNote, PeriodCard } from "../components/Money";
 import { Icon } from "../components/Icon";
 
 interface Props {
@@ -27,7 +36,18 @@ interface Props {
   onBack?: () => void;
   /** Drawn inside History, under that screen's own header. */
   embedded?: boolean;
+  /** Share of each sale you keep, for the receipt. */
+  keepShare?: number;
 }
+
+type Metric = "profit" | "sales" | "waste" | "left";
+const METRICS: { key: Metric; label: string; says: string }[] = [
+  { key: "profit", label: "Profit", says: "profit that day, after the middle man and ingredients" },
+  { key: "sales", label: "Sales", says: "what customers paid that day" },
+  { key: "waste", label: "Thrown away", says: "ingredients binned that day, in dollars" },
+  { key: "left", label: "Left over", says: "rolls left over that day" },
+];
+const METRIC_KEY = "calendar-metric";
 
 const WD = ["M", "T", "W", "T", "F", "S", "S"];
 
@@ -46,8 +66,35 @@ function monthGrid(anchor: BizDate): { cells: BizDate[]; label: string } {
   };
 }
 
-export function Calendar({ today, stats, onPick, onBack, embedded = false }: Props) {
+function readMetric(): Metric {
+  try {
+    const v = localStorage.getItem(METRIC_KEY);
+    if (v === "profit" || v === "sales" || v === "waste" || v === "left") return v;
+  } catch { /* private window: the default is fine */ }
+  return "profit";
+}
+
+/** The number a counted day shows, or null when it has none. */
+function actualValue(d: DayStat, m: Metric): number | null {
+  if (m === "left") return d.wasted;
+  if (m === "profit") return d.profit;
+  if (m === "sales") return d.sales;
+  return d.wasteCost;
+}
+
+function fmt(v: number, m: Metric): string {
+  return m === "left" ? String(Math.round(v)) : usdShort(v);
+}
+
+export function Calendar({
+  today, stats, onPick, onBack, embedded = false, keepShare = 1,
+}: Props) {
   const [anchor, setAnchor] = useState<BizDate>(today);
+  const [metric, setMetricState] = useState<Metric>(readMetric);
+  const setMetric = (m: Metric) => {
+    setMetricState(m);
+    try { localStorage.setItem(METRIC_KEY, m); } catch { /* not kept; fine */ }
+  };
   const { cells, label } = useMemo(() => monthGrid(anchor), [anchor]);
   const month = fromBizDate(anchor).getMonth();
 
@@ -64,27 +111,31 @@ export function Calendar({ today, stats, onPick, onBack, embedded = false }: Pro
   );
 
   const inMonthDays = days.filter((d) => fromBizDate(d.date).getMonth() === month);
-
-  // Scale the waste bars against the worst day in THIS month, not all time:
-  // the question a month view answers is "which days were bad for this month",
-  // and a single catastrophic day last year would flatten everything here.
-  const worst = Math.max(1, ...inMonthDays.map((d) => d.wasted ?? 0));
   const outstanding = inMonthDays.filter((d) => d.needsWaste || d.needsProduction).length;
-
-  // A month with no records at all is almost certainly a mis-navigation, so
-  // offer the way back rather than a wall of empty cells.
   const anyRecords = inMonthDays.some((d) => d.phase === "open" || d.phase === "closed");
 
-  const totals = inMonthDays.reduce(
+  const [mFrom, mTo] = monthOf(anchor);
+  const monthMoney = useMemo(() => projectPeriod(stats, today, mFrom, mTo),
+                             [stats, today, mFrom, mTo]);
+  const weeks = useMemo(() => {
+    const out: { from: BizDate; to: BizDate; p: ReturnType<typeof projectPeriod> }[] = [];
+    for (let i = 0; i < cells.length; i += 7) {
+      const from = cells[i], to = cells[i + 6];
+      out.push({ from, to, p: projectPeriod(stats, today, from, to) });
+    }
+    return out;
+  }, [cells, stats, today]);
+
+  const units = inMonthDays.reduce(
     (a, d) => {
-      if (d.phase !== "open" && d.phase !== "closed") return a;
-      a.made += d.made;
-      if (d.wasted !== null) { a.wasted += d.wasted; a.counted += 1; }
-      if (d.wasteCost !== null) a.cost += d.wasteCost;
+      if (d.wasted === null) return a;
+      a.made += d.made; a.left += d.wasted; a.counted += 1;
       return a;
     },
-    { made: 0, wasted: 0, cost: 0, counted: 0 },
+    { made: 0, left: 0, counted: 0 },
   );
+
+  const says = METRICS.find((m) => m.key === metric)!.says;
 
   return (
     <div>
@@ -115,6 +166,15 @@ export function Calendar({ today, stats, onPick, onBack, embedded = false }: Pro
         </button>
       </div>
 
+      <div className="tabs cal-metric" role="group" aria-label="What each day shows">
+        {METRICS.map((m) => (
+          <button key={m.key} aria-pressed={metric === m.key} onClick={() => setMetric(m.key)}>
+            {m.label}
+          </button>
+        ))}
+      </div>
+      <p className="hint cal-says">Each day shows <strong>{says}</strong>.</p>
+
       <div className="cal">
         <div className="cal-wd" aria-hidden="true">
           {WD.map((w, i) => <span key={i}>{w}</span>)}
@@ -123,14 +183,27 @@ export function Calendar({ today, stats, onPick, onBack, embedded = false }: Pro
           {days.map((d) => {
             const inMonth = fromBizDate(d.date).getMonth() === month;
             const needs = d.needsWaste || d.needsProduction;
-            const rate = wasteRate(d);
-            const bar = d.wasted !== null ? Math.max(3, (d.wasted / worst) * 100) : 0;
-            const label = [
+            const actual = d.phase === "closed" ? actualValue(d, metric) : null;
+            const ahead = d.date >= today && d.phase !== "closed" && d.phase !== "outage";
+            const est = ahead && inMonth ? estimateDay(stats, today, d.date) : null;
+            const projected = est
+              ? (metric === "left" ? est.mean.left
+                : metric === "profit" ? est.mean.profit
+                : metric === "sales" ? est.mean.sales : est.mean.wasteCost)
+              : null;
+            let value = "", kind = "";
+            if (actual !== null) { value = fmt(actual, metric); kind = actual < 0 ? "neg" : "actual"; }
+            else if (d.phase === "outage") { value = "closed"; kind = "closed"; }
+            else if (d.phase === "open" && d.date < today) { value = "?"; kind = "unknown"; }
+            else if (d.phase === "empty" && inMonth && d.date < today && stats.dates.length
+                     && d.date > stats.dates[0]) { value = "—"; kind = "blank"; }
+            else if (projected !== null) { value = `~${fmt(projected, metric)}`; kind = "projected"; }
+            const aria = [
               formatShort(d.date),
-              d.phase === "closed" ? `${d.made} made, ${d.wasted} left over`
-                : d.phase === "open" ? `${d.made} made, not counted`
-                : d.phase === "outage" ? "closed"
-                : d.phase === "future" ? "" : "nothing recorded",
+              actual !== null ? `${METRICS.find((m) => m.key === metric)!.label} ${fmt(actual, metric)}`
+                : kind === "unknown" ? "leftovers not counted"
+                : kind === "projected" ? `projected ${value.slice(1)}`
+                : kind === "closed" ? "closed" : "",
               d.needsWaste ? "needs a leftover count" : "",
               d.needsProduction ? "needs today's production" : "",
             ].filter(Boolean).join(" — ");
@@ -143,53 +216,86 @@ export function Calendar({ today, stats, onPick, onBack, embedded = false }: Pro
                   needs ? "needs" : "",
                   d.date === today ? "is-today" : "",
                 ].filter(Boolean).join(" ")}
-                aria-label={label}
+                aria-label={aria}
                 aria-current={d.date === today ? "date" : undefined}
-                disabled={d.phase === "future"}
+                disabled={d.phase === "future" && !est}
                 onClick={() => onPick(d.date)}
               >
                 <span className="n">{fromBizDate(d.date).getDate()}</span>
-                {d.wasted !== null && (
-                  <span className="bar" style={{ height: `${bar}%` }}
-                        data-rate={rate !== null && rate >= 0.5 ? "high" : undefined} />
-                )}
-                {d.phase === "open" && <span className="dot" />}
+                {value && <span className={`v ${kind}`}>{value}</span>}
               </button>
             );
           })}
         </div>
       </div>
 
-      <div className="cal-key">
+      <div className="cal-key" aria-label="Key">
+        <span><b className="kv">{metric === "left" ? "9" : "$148"}</b> counted</span>
+        <span><b className="kv projected">{metric === "left" ? "~9" : "~$140"}</b> projected</span>
+        <span><b className="kv unknown">?</b> not counted</span>
+        <span><b className="kv blank">—</b> nothing entered</span>
         <span><i className="k-needs" />needs you</span>
-        <span><i className="k-open" />not counted</span>
-        <span><i className="k-bar" />leftovers</span>
+        <span><i className="k-today" />today</span>
       </div>
 
-      {anyRecords ? (
-        <div className="card">
-          <div className="eyebrow">This month</div>
-          <div className="stats" style={{ marginTop: 12 }}>
-            <div className="stat">
-              <div className="label">made</div>
-              <div className="value">{totals.made.toLocaleString()}</div>
-            </div>
-            <div className="stat accent">
-              <div className="label">left over</div>
-              <div className="value">{totals.wasted.toLocaleString()}</div>
-            </div>
-            <div className="stat">
-              <div className="label">cost</div>
-              <div className="value">
-                {totals.cost > 0 ? `$${Math.round(totals.cost).toLocaleString()}` : "—"}
-              </div>
-            </div>
+      {weeks.some((w) => w.p.countedDays || w.p.aheadDays || w.p.uncountedDays) && (
+        <section className="card weeks" aria-label="Week by week">
+          <div className="weeks-head">
+            <span>Week</span><span className="num">Sales</span>
+            <span className="num">Thrown away</span><span className="num">Profit</span>
           </div>
-          <p className="hint" style={{ marginTop: 12 }}>
-            Across {totals.counted} counted day{totals.counted === 1 ? "" : "s"}.
-            Tap any day to see what happened.
-          </p>
-        </div>
+          {weeks.map((w) => {
+            const est = w.p.aheadDays + w.p.uncountedDays > 0;
+            const t = w.p.total;
+            if (!w.p.countedDays && !est) return null;
+            const tilde = est ? "~" : "";
+            const note = w.p.aheadDays
+              ? (w.p.countedDays ? "so far + projected" : "projected")
+              : w.p.uncountedDays
+                ? `${w.p.uncountedDays} day${w.p.uncountedDays === 1 ? "" : "s"} estimated`
+                : "";
+            return (
+              <div className={`weeks-row${est ? " est" : ""}`} key={w.from}>
+                <span>{formatShort(w.from)} – {formatShort(w.to)}
+                  {note && <small> {note}</small>}
+                  {w.p.blankDays.length > 0 && <small> {w.p.blankDays.length} blank</small>}</span>
+                <span className="num">{tilde}{usd(t.sales)}</span>
+                <span className="num">{tilde}{usd(t.wasteCost)}
+                  <small> {share(t.wasteCost, t.sales)}</small></span>
+                <span className="num strong">{tilde}{usd(t.profit)}</span>
+              </div>
+            );
+          })}
+        </section>
+      )}
+
+      {anyRecords || monthMoney.aheadDays ? (
+        <>
+          <PeriodCard title={label} p={monthMoney} keepShare={keepShare} />
+          {units.counted > 0 && (
+            <div className="card">
+              <div className="stats">
+                <div className="stat">
+                  <div className="label">rolls made</div>
+                  <div className="value">{units.made.toLocaleString()}</div>
+                </div>
+                <div className="stat accent">
+                  <div className="label">left over</div>
+                  <div className="value">{units.left.toLocaleString()}</div>
+                </div>
+                <div className="stat">
+                  <div className="label">of what you made</div>
+                  <div className="value">{share(units.left, units.made)}</div>
+                </div>
+              </div>
+              <p className="hint" style={{ marginTop: 12 }}>
+                Across {units.counted} counted day{units.counted === 1 ? "" : "s"}.
+                Tap any day for its receipt.
+              </p>
+            </div>
+          )}
+          <MoneyNote keepShare={keepShare} />
+        </>
       ) : (
         <div className="card">
           <p className="hint">Nothing recorded this month.</p>

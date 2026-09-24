@@ -863,7 +863,7 @@ button.primary.rest:active { background: var(--accent-soft); }
 .sheet-x { width: 40px; height: 40px; min-height: 40px; padding: 0; flex: none;
            border-radius: var(--r-full); display: grid; place-items: center; }
 .sheet-cost { margin-top: var(--s3); }
-.sheet-cost strong { color: var(--accent-ink); font-family: var(--font-display); }
+.sheet-cost strong { color: var(--text-primary); font-family: var(--font-display); }
 .sheet-cols { grid-template-columns: minmax(0, 1fr) 52px 52px; margin-top: var(--s4); }
 .sheet-lines { display: flex; flex-direction: column; }
 .sheet-line { display: grid; grid-template-columns: minmax(0, 1fr) 52px 52px;
@@ -1183,3 +1183,132 @@ button.setrow:active { background: var(--surface-2); }
 .tabbar button { min-height: 64px; font-size: 11px; letter-spacing: 0.03em; text-transform: none; }
 body.has-tabbar .footer { bottom: 64px; }
 .updatebar { bottom: 64px; }
+
+/* ---- 13. money --------------------------------------------------------- */
+/* Receipts and period cards. One neutral ink for every bar: each line is
+   labelled, so no colour has to carry identity, and amber stays reserved for
+   what you owe. Red only for a loss, and always with a minus sign or the
+   word "loses" beside it, never colour alone. */
+.neg, .value.neg, .num.neg { color: var(--critical-ink); }
+.chart .fill.neg { background: var(--critical-ink); }
+.cval .neg { display: inline-flex; align-items: center; gap: 4px; }
+
+.card.period { padding: var(--s3) var(--s4) var(--s4); }
+.period-top {
+  display: grid; grid-template-columns: minmax(0, 1.1fr) minmax(0, 1fr);
+  gap: var(--s3); align-items: end; margin-top: var(--s2);
+}
+.period .stat.hero .value { font-size: 40px; font-variant-numeric: normal; }
+.period .range { font-size: 12px; color: var(--text-secondary); margin-top: 6px; }
+.period-side { display: flex; flex-direction: column; gap: 6px; min-width: 0; }
+.period-side > div { display: flex; flex-direction: column; min-width: 0; }
+.period-side .k { font-size: 11px; font-weight: 600; color: var(--text-secondary); }
+.period-side .v { font-size: 16px; font-weight: 700; line-height: 1.2; }
+.period-side .v small { font-size: 11.5px; font-weight: 500; color: var(--text-secondary); }
+
+/* Counted so far (solid) and still expected (faint), on one track. */
+.meter {
+  display: flex; gap: 2px; height: 10px; margin-top: var(--s3);
+  background: var(--surface-2); border-radius: 5px; overflow: hidden;
+}
+.meter .known { background: var(--series-1); }
+.meter .expected { background: var(--series-1); opacity: 0.35; }
+.meter-key { display: flex; flex-wrap: wrap; gap: 4px 14px; margin-top: 6px;
+             font-size: 12px; color: var(--text-secondary); }
+.meter-key span { display: inline-flex; align-items: center; gap: 6px; }
+.meter-key i { width: 12px; height: 8px; border-radius: 2px; background: var(--series-1); flex: none; }
+.meter-key i.expected { opacity: 0.35; }
+.card p.hint.period-note { margin: var(--s2) 0 0; font-size: 12px; }
+.period-receipt { margin-top: var(--s3); border-top: 1px solid var(--line-soft); }
+.period-receipt > summary {
+  min-height: 40px; display: flex; align-items: center; cursor: pointer;
+  font-size: 13px; font-weight: 700; color: var(--text-primary);
+}
+
+/* The receipt: dollars, share of sales, and a thin bar of that share. */
+.ledger { display: flex; flex-direction: column; margin-top: var(--s3); }
+.ledger-head, .ledger-line {
+  display: grid; grid-template-columns: minmax(0, 1fr) 76px 58px; column-gap: var(--s2);
+}
+.ledger-head {
+  font-family: var(--font-display); font-size: 10.5px; font-weight: 700;
+  letter-spacing: 0.08em; text-transform: uppercase; color: var(--text-secondary);
+  padding-bottom: 6px; border-bottom: 1px solid var(--line);
+}
+.ledger-head .num { text-align: right; }
+.ledger-line { row-gap: 5px; align-items: baseline; padding: 8px 0 7px;
+               border-bottom: 1px solid var(--line-soft); }
+.ledger-line .lk { font-size: 13.5px; font-weight: 600; min-width: 0; }
+.ledger-line .lk small { font-size: 12px; font-weight: 500; color: var(--text-secondary); }
+.ledger-line .sign { display: inline-block; width: 1.1em; color: var(--text-secondary); }
+.ledger-line .lv, .ledger-line .lp { text-align: right; font-size: 13.5px; }
+.ledger-line .lp { color: var(--text-secondary); }
+.ledger-line .lbar { grid-column: 1 / -1; height: 4px; background: var(--surface-2);
+                     border-radius: 0 2px 2px 0; }
+.ledger-line .lbar i { display: block; height: 100%; min-width: 2px;
+                       background: var(--series-1); border-radius: 0 2px 2px 0; }
+.ledger-line.strong { border-bottom: 0; }
+.ledger-line.strong .lk, .ledger-line.strong .lv { font-size: 15.5px; font-weight: 800; }
+.ledger-line.strong .lp { color: var(--text-primary); font-weight: 700; }
+p.hint.money-note { font-size: 11.5px; color: var(--text-secondary);
+                    margin: var(--s2) 4px var(--s3); line-height: 1.45; }
+
+/* Today: each of the last seven days shows its profit over its leftovers. */
+.week-day { min-height: 56px; gap: 2px; }
+.week-day .wp { font-size: 14.5px; font-weight: 700; color: var(--text-primary);
+                min-height: 17px; letter-spacing: -0.02em; }
+.week-day .wv { font-size: 10.5px; font-weight: 500; color: var(--text-secondary); min-height: 13px; }
+.week-day.needs .wp { color: var(--accent-ink); }
+.week-day.needs .wv { color: var(--accent-ink); font-size: 9.5px; }
+.week-day.is-today .wp { font-size: 11px; font-weight: 600; color: var(--text-secondary); }
+.week-day.is-today.p-closed .wp { font-size: 14.5px; color: var(--text-primary); }
+.week-day.p-outage .wp { font-size: 10.5px; color: var(--text-dim); font-weight: 500; }
+.hint-inline.week-last { display: block; margin-top: var(--s2); line-height: 1.5; }
+
+/* Calendar: a number per day, not a bar to decode. */
+.cal-metric { margin-top: var(--s2); }
+.card p.hint.cal-says, p.hint.cal-says { margin: 6px 2px 0; font-size: 12px; color: var(--text-secondary); }
+.cal-day {
+  flex-direction: column; justify-content: space-between; align-items: stretch;
+  padding: 4px 2px 5px;
+}
+.cal-day .n { font-size: 11px; font-weight: 600; text-align: left; padding-left: 3px;
+              color: var(--text-secondary); }
+.cal-day .v { font-size: 12px; font-weight: 700; text-align: center; letter-spacing: -0.03em;
+              white-space: nowrap; color: var(--text-primary); font-variant-numeric: tabular-nums; }
+.cal-day .v.projected { color: var(--text-secondary); font-weight: 600; font-style: italic; }
+.cal-day .v.unknown { color: var(--accent-ink); font-size: 15px; line-height: 1; }
+.cal-day .v.closed { font-size: 9.5px; font-weight: 500; color: var(--text-dim); }
+.cal-day .v.neg { color: var(--critical-ink); }
+.cal-day.p-future:not(:disabled) { background: transparent; border-color: var(--line); }
+.cal-key .kv { font-size: 12px; font-weight: 700; color: var(--text-primary); }
+.cal-key .kv.projected { color: var(--text-secondary); font-style: italic; font-weight: 600; }
+.cal-key .kv.unknown { color: var(--accent-ink); }
+.cal-key .kv.blank, .cal-day .v.blank { color: var(--text-dim); font-weight: 600; }
+.cal-metric button { font-size: 13px; padding: 0 4px; white-space: nowrap; }
+.hint-inline.nowrap { white-space: nowrap; }
+.cal-key i.k-today { border: 1px dashed var(--accent-ink); }
+
+/* Week by week, under the calendar. */
+.card.weeks { padding: var(--s2) var(--s3); }
+.weeks-head, .weeks-row {
+  display: grid; grid-template-columns: minmax(0, 1.25fr) repeat(3, minmax(0, 1fr));
+  column-gap: 6px; align-items: baseline;
+}
+.weeks-head { font-family: var(--font-display); font-size: 10px; font-weight: 700;
+              letter-spacing: 0.06em; text-transform: uppercase; color: var(--text-secondary);
+              padding: 6px 0; border-bottom: 1px solid var(--line); }
+.weeks-row { padding: 9px 0; border-bottom: 1px solid var(--line-soft); font-size: 13px; }
+.weeks-row:last-child { border-bottom: 0; }
+.weeks-head .num, .weeks-row .num { text-align: right; }
+.weeks-row small { display: block; font-size: 10.5px; color: var(--text-secondary); font-style: normal; }
+.weeks-row .strong { font-weight: 800; }
+.weeks-row.est .num { color: var(--text-secondary); font-style: italic; }
+.weeks-row.est .num.strong { color: var(--text-primary); }
+
+/* The day sheet's money. */
+.sheet-money { margin-top: var(--s2); }
+.sheet-money .value, .sheet-estimate .value { font-size: 26px; font-variant-numeric: normal; }
+.sheet-estimate { margin: var(--s2) 0 var(--s3); }
+.sheet-estimate .stats { margin-top: var(--s2); }
+.sheet-cols.money, .sheet-line.money { grid-template-columns: minmax(0, 1fr) 44px 40px 66px; }

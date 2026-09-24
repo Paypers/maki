@@ -16,6 +16,7 @@
 import type { BizDate } from "./businessDay";
 import { daysBetween } from "./businessDay";
 import { toObservations } from "./model";
+import { DEFAULT_ECONOMICS, itemMoney, type Economics } from "./money";
 import type { DayRecord, Entry, Item } from "./types";
 
 export type DayPhase =
@@ -38,6 +39,17 @@ export interface DayStat {
   wasteCost: number | null;
   /** True when some item in the day has no recipe, so cost is a floor. */
   costIsFloor: boolean;
+  /** What customers paid, estimated from menu prices. Null until counted:
+   *  what sold is unknown before then. See lib/money.ts for the method. */
+  sales: number | null;
+  /** The middle man's share of those sales. Null until counted. */
+  fee: number | null;
+  /** Ingredients for everything made -- known as soon as production is in. */
+  costMade: number;
+  /** sales - fee - costMade. Null until counted. */
+  profit: number | null;
+  /** True when something that sold has no menu price, so sales is a floor. */
+  salesIsFloor: boolean;
   itemsMade: number;
   productionConfirmed: boolean;
   wasteConfirmed: boolean;
@@ -58,25 +70,40 @@ export function buildDayStats(
   days: DayRecord[],
   items: Item[],
   today: BizDate,
+  econ: Economics = DEFAULT_ECONOMICS,
 ): DayStatIndex {
-  const cost = new Map(items.map((i) => [i.itemId, i.unitCost]));
+  const byId = new Map(items.map((i) => [i.itemId, i]));
   const obs = toObservations(entries);
 
   const acc = new Map<BizDate, {
     made: number; wasted: number; soldOut: number; itemsMade: number;
     wasteCost: number; costIsFloor: boolean;
+    sales: number; fee: number; costMade: number; salesIsFloor: boolean;
   }>();
   for (const o of obs) {
     const row = acc.get(o.date)
-      ?? { made: 0, wasted: 0, soldOut: 0, itemsMade: 0, wasteCost: 0, costIsFloor: false };
+      ?? { made: 0, wasted: 0, soldOut: 0, itemsMade: 0, wasteCost: 0, costIsFloor: false,
+           sales: 0, fee: 0, costMade: 0, salesIsFloor: false };
     const left = Math.max(0, o.supply - o.sold);
     row.made += o.supply;
     row.wasted += left;
     row.itemsMade += 1;
     if (o.censored) row.soldOut += 1;
-    const unit = cost.get(o.itemId);
-    if (unit && unit > 0) row.wasteCost += left * unit;
-    else if (left > 0) row.costIsFloor = true;
+    const item = byId.get(o.itemId);
+    if (item) {
+      // Money as if counted; the day-level fields below blank it out when
+      // the count was never confirmed.
+      const m = itemMoney(item, o.date, o.supply, left, econ);
+      row.sales += m.sales ?? 0;
+      row.fee += m.fee ?? 0;
+      row.costMade += m.cost;
+      row.wasteCost += m.wasteCost ?? 0;
+      if (!m.costed && o.supply > 0) row.costIsFloor = true;
+      if (!m.priced && o.sold > 0) row.salesIsFloor = true;
+    } else if (o.supply > 0) {
+      row.costIsFloor = true;
+      if (o.sold > 0) row.salesIsFloor = true;
+    }
     acc.set(o.date, row);
   }
 
@@ -108,6 +135,11 @@ export function buildDayStats(
       soldOut: wasteConfirmed ? (row?.soldOut ?? 0) : null,
       wasteCost: wasteConfirmed && row ? row.wasteCost : null,
       costIsFloor: row?.costIsFloor ?? false,
+      sales: wasteConfirmed && row ? row.sales : null,
+      fee: wasteConfirmed && row ? row.fee : null,
+      costMade: row?.costMade ?? 0,
+      profit: wasteConfirmed && row ? row.sales - row.fee - row.costMade : null,
+      salesIsFloor: row?.salesIsFloor ?? false,
       itemsMade: row?.itemsMade ?? 0,
       productionConfirmed,
       wasteConfirmed,
@@ -127,6 +159,7 @@ export function emptyDay(date: BizDate, today: BizDate): DayStat {
     date,
     phase: daysBetween(date, today) < 0 ? "future" : "empty",
     made: 0, wasted: null, soldOut: null, wasteCost: null, costIsFloor: false,
+    sales: null, fee: null, costMade: 0, profit: null, salesIsFloor: false,
     itemsMade: 0, productionConfirmed: false, wasteConfirmed: false,
     needsWaste: false,
     needsProduction: date === today,

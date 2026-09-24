@@ -21,6 +21,7 @@ import { describeSaveError } from "../lib/saveError";
 import { QuantityList, type RowSpec } from "./QuantityList";
 import { Icon } from "../components/Icon";
 import { ScreenHeader } from "../components/ScreenHeader";
+import { usd } from "../lib/money";
 
 interface Props {
   date: BizDate;
@@ -80,6 +81,10 @@ export function WasteEntry({ date, today, items, owed, onPickDate, onDone }: Pro
   const remaining = producible.length - counted.length;
   const overCount = producible.filter((i) => (qty[i.itemId] ?? 0) > (made[i.itemId] ?? 0));
   const totalWaste = counted.reduce((s, i) => s + (qty[i.itemId] ?? 0), 0);
+  // What the leftovers counted so far cost in ingredients -- the loss, in
+  // dollars, growing as you count. Items with no recipe add nothing.
+  const wasteDollars = counted.reduce(
+    (s, i) => s + (qty[i.itemId] ?? 0) * (i.unitCost && i.unitCost > 0 ? i.unitCost : 0), 0);
   const soldOut = counted.filter((i) => (qty[i.itemId] ?? 0) === 0).length;
 
   function change(itemId: number, value: number) {
@@ -155,6 +160,10 @@ export function WasteEntry({ date, today, items, owed, onPickDate, onDone }: Pro
         <div>
           <span className="k">Left over</span>
           <span className="v num">{counted.length ? totalWaste : "—"}</span>
+        </div>
+        <div>
+          <span className="k">Thrown away</span>
+          <span className="v num">{counted.length ? usd(wasteDollars) : "—"}</span>
         </div>
       </section>
 

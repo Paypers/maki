@@ -511,7 +511,7 @@ npm run wx:verify                           # the import, and that the sync sett
 npm run wx:shots                            # the weather card, light and dark
 ```
 
-Tests: `python -m pytest tests/ -q` (**227**) and `cd web && npm test` (**180**).
+Tests: `python -m pytest tests/ -q` (**227**) and `cd web && npm test` (**192**).
 
 The operator's real workbook and all extracted data stay out of version control;
 `tests/fixtures/fixture.xlsx` is a committed, anonymised stand-in that reproduces

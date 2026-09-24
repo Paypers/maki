@@ -10,6 +10,7 @@ import { History } from "./screens/History";
 import { Setup, type SetupTarget } from "./screens/Setup";
 import { DaySheet } from "./components/DaySheet";
 import { buildDayStats, emptyDay, type DayStatIndex } from "./lib/dayStats";
+import { economicsOf, estimateDay } from "./lib/money";
 import { estimateWeatherEffect, scoreDaysForWeather, type WeatherEffect } from "./lib/weatherEffect";
 import { buildTodayOutlook } from "./lib/todayOutlook";
 import { syncWeather } from "./lib/weatherSync";
@@ -130,7 +131,7 @@ export default function App() {
     // Fourteen days of total leftovers ending on the latest day, for the trend
     // line under the recap. Only counted days contribute; an uncounted day is
     // a gap in the line, not a zero on it.
-    const index = buildDayStats(entries, days, withCosts, todayDate);
+    const index = buildDayStats(entries, days, withCosts, todayDate, economicsOf(cfg));
     setStats(index);
     setAllEntries(entries);
 
@@ -148,6 +149,7 @@ export default function App() {
       : [];
     const trend: Array<number | null> = window14.map((d) => d?.wasted ?? null);
     const costTrend: Array<number | null> = window14.map((d) => d?.wasteCost ?? null);
+    const profitTrend: Array<number | null> = window14.map((d) => d?.profit ?? null);
     setSummary(latest && obs.length ? {
       date: latest,
       ageDays: daysBetween(latest, todayDate),
@@ -155,7 +157,7 @@ export default function App() {
       wasted: counted
         ? Math.round(obs.reduce((s, o) => s + (o.supply - o.sold), 0)) : null,
       soldOut: counted ? obs.filter((o) => o.censored).length : null,
-      trend, costTrend,
+      trend, costTrend, profitTrend,
     } : null);
     setReady(true);
   }, []);
@@ -333,7 +335,7 @@ export default function App() {
 
         {view.name === "history" && (
           <History today={today} stats={stats} items={items} weather={weatherEffect}
-                   onPick={setSheetDate} />
+                   econ={economicsOf(settings)} onPick={setSheetDate} />
         )}
 
         {view.name === "setup" && (
@@ -382,6 +384,8 @@ export default function App() {
           today={today}
           items={items}
           entries={allEntries.filter((e) => e.businessDate === sheetDate)}
+          econ={economicsOf(settings)}
+          estimate={estimateDay(stats, today, sheetDate)}
           onClose={() => setSheetDate(null)}
           onCountWaste={(d) => { setSheetDate(null); setView({ name: "waste", date: d }); }}
           onEditProduction={(d) => { setSheetDate(null); setView({ name: "production", date: d }); }}

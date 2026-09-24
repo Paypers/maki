@@ -6,6 +6,11 @@
  * rules out grouped bars, and a single series needs no legend because the
  * heading names it.
  *
+ * Money leads: profit for the range, where the sales went, and each item's
+ * own profit -- including the items that lose money. Only COUNTED days go in:
+ * an uncounted day has no known leftovers, and reading it as zero would
+ * understate waste and overstate sales.
+ *
  * The sell-out panel is the most important thing here and the least obvious.
  * An item that sells out most days has demand nobody has ever observed, so its
  * numbers are floors rather than estimates -- and the only way to find out what
@@ -21,6 +26,8 @@ import type { Item } from "../lib/types";
 import { Icon } from "../components/Icon";
 import type { WeatherEffect } from "../lib/weatherEffect";
 import { WeatherBlock } from "../components/WeatherBlock";
+import { DEFAULT_ECONOMICS, itemMoney, share, usd, type Economics } from "../lib/money";
+import { Ledger } from "../components/Money";
 
 interface Props {
   /** Null until a location is set and some history has been matched. */
@@ -35,6 +42,9 @@ interface Props {
   /** Drawn inside History: no header of its own, and no "More" links --
    *  everything they pointed at now lives on Setup. */
   embedded?: boolean;
+  econ?: Economics;
+  /** Days whose leftovers were counted. When given, only these are used. */
+  counted?: ReadonlySet<string>;
 }
 
 const RANGES = [
@@ -45,12 +55,15 @@ const RANGES = [
 
 export function Insights({ weather,
   today, items, onBack, onSettings, onCloud, onWeather, onReconcile, embedded = false,
+  econ = DEFAULT_ECONOMICS, counted,
 }: Props) {
-  const [entries, setEntries] = useState<Awaited<ReturnType<typeof store.getAllEntries>>>([]);
+  const [raw, setEntries] = useState<Awaited<ReturnType<typeof store.getAllEntries>>>([]);
   const [days, setDays] = useState(30);
-  const [tab, setTab] = useState<"waste" | "sellout" | "weekday">("waste");
+  const [tab, setTab] = useState<"profit" | "waste" | "sellout" | "weekday">("profit");
 
   useEffect(() => { void store.getAllEntries().then(setEntries); }, []);
+  const entries = useMemo(
+    () => counted ? raw.filter((e) => counted.has(e.businessDate)) : raw, [raw, counted]);
 
   const byItem = useMemo(() => new Map(items.map((i) => [i.itemId, i])), [items]);
   const since = addDays(today, -days);
@@ -59,15 +72,25 @@ export function Insights({ weather,
     const obs = toObservations(entries).filter((o) => o.date >= since && o.date <= today);
     const acc = new Map<number, {
       made: number; wasted: number; sold: number; days: number; sellouts: number;
+      sales: number; fee: number; costMade: number; profit: number;
     }>();
     for (const o of obs) {
       const row = acc.get(o.itemId)
-        ?? { made: 0, wasted: 0, sold: 0, days: 0, sellouts: 0 };
+        ?? { made: 0, wasted: 0, sold: 0, days: 0, sellouts: 0,
+             sales: 0, fee: 0, costMade: 0, profit: 0 };
       row.made += o.supply;
       row.wasted += o.supply - o.sold;
       row.sold += o.sold;
       row.days += 1;
       if (o.censored) row.sellouts += 1;
+      const item = byItem.get(o.itemId);
+      if (item) {
+        const m = itemMoney(item, o.date, o.supply, o.supply - o.sold, econ);
+        row.sales += m.sales ?? 0;
+        row.fee += m.fee ?? 0;
+        row.costMade += m.cost;
+        row.profit += m.profit ?? 0;
+      }
       acc.set(o.itemId, row);
     }
     return [...acc.entries()]
@@ -79,12 +102,16 @@ export function Insights({ weather,
         cost: (r.wasted) * (byItem.get(itemId)?.unitCost ?? 0),
       }))
       .filter((r) => r.item);
-  }, [entries, since, today, byItem]);
+  }, [entries, since, today, byItem, econ]);
 
   const totals = useMemo(() => {
     const made = rows.reduce((s, r) => s + r.made, 0);
     const wasted = rows.reduce((s, r) => s + r.wasted, 0);
     const cost = rows.reduce((s, r) => s + r.cost, 0);
+    const sales = rows.reduce((s, r) => s + r.sales, 0);
+    const fee = rows.reduce((s, r) => s + r.fee, 0);
+    const costMade = rows.reduce((s, r) => s + r.costMade, 0);
+    const profit = rows.reduce((s, r) => s + r.profit, 0);
     const dayCount = new Set(
       toObservations(entries).filter((o) => o.date >= since && o.date <= today)
         .map((o) => o.date)).size;
@@ -108,6 +135,7 @@ export function Insights({ weather,
     });
     const dailyAvg = dayCount ? cost / dayCount : 0;
     return { made, wasted, cost, dayCount, latest, series, dailyAvg,
+             sales, fee, costMade, profit,
              staleBy: latest ? daysBetween(latest, today) : 0,
              rate: made ? wasted / made : 0 };
   }, [rows, entries, since, today, byItem, days]);
@@ -135,10 +163,11 @@ export function Insights({ weather,
   // otherwise everything falls back to units so the comparison stays fair.
   const haveAllCosts = rows.length > 0 && rows.every((r) => (r.item?.unitCost ?? 0) > 0);
   const measure = (r: typeof rows[number]) =>
-    tab === "sellout" ? r.selloutRate : haveAllCosts ? r.cost : r.wasted;
+    tab === "profit" ? r.profit
+    : tab === "sellout" ? r.selloutRate : haveAllCosts ? r.cost : r.wasted;
   const ranked = tab === "weekday" ? []
     : [...rows].sort((a, b) => measure(b) - measure(a));
-  const scale = Math.max(tab === "sellout" ? 0.01 : 1, ...ranked.map(measure));
+  const scale = Math.max(tab === "sellout" ? 0.01 : 1, ...ranked.map((r) => Math.abs(measure(r))));
   const weekdayScale = Math.max(1, ...perWeekday.map((w) => w.mean));
 
   const missingCosts = rows.filter((r) => !(r.item?.unitCost ?? 0)).length;
@@ -214,24 +243,53 @@ export function Insights({ weather,
         ))}
       </div>
 
-      {/* One hero per view, and on this screen it is the money: units and a
-          percentage are both ways of saying how much, but the dollar figure
-          is the one that decides whether anything changes tomorrow. */}
+      {/* The money first: what the range earned and where the sales went.
+          Counted days only, so every figure here is what happened, not a
+          projection -- the calendar and Today carry the projections. */}
+      {totals.sales > 0 && (
+        <div className="card period">
+          <div className="eyebrow">Money · {totals.dayCount} counted days</div>
+          <div className="period-top">
+            <div className="stat hero">
+              <div className="label">Profit</div>
+              <div className={`value${totals.profit < 0 ? " neg" : ""}`}>{usd(totals.profit)}</div>
+              <div className="range num">
+                {totals.dayCount ? usd(totals.profit / totals.dayCount) : "—"} a day
+              </div>
+            </div>
+            <div className="period-side">
+              <div><span className="k">Sales</span><span className="v num">{usd(totals.sales)}</span></div>
+              <div><span className="k">Thrown away</span>
+                <span className="v num">{usd(totals.cost)}
+                  <small> · {share(totals.cost, totals.sales)} of sales</small></span></div>
+              <div><span className="k">Profit margin</span>
+                <span className="v num">{share(totals.profit, totals.sales)}<small> of sales</small></span></div>
+            </div>
+          </div>
+          <Ledger t={{ sales: totals.sales, fee: totals.fee, cost: totals.costMade,
+                       wasteCost: totals.cost, profit: totals.profit }}
+                  keepShare={econ.saleShare} />
+        </div>
+      )}
+
       <div className="card">
         <div className="hero-row">
           <div className="stat hero accent">
             <div className="eyebrow">Thrown away</div>
             <div className="value">
-              {totals.cost > 0 ? `$${Math.round(totals.cost).toLocaleString()}` : "—"}
+              {totals.cost > 0 ? usd(totals.cost) : "—"}
             </div>
           </div>
           <div className="hero-side">
             <div className="num">
-              {Math.round(totals.wasted).toLocaleString()}<span> units</span>
+              {Math.round(totals.wasted).toLocaleString()}<span> rolls</span>
             </div>
             <div className="num">
               {Math.round(totals.rate * 100)}%<span> of {Math.round(totals.made).toLocaleString()} made</span>
             </div>
+            {totals.sales > 0 && (
+              <div className="num">{share(totals.cost, totals.sales)}<span> of sales</span></div>
+            )}
           </div>
         </div>
         {totals.series.some((v) => v !== null) && (
@@ -246,6 +304,9 @@ export function Insights({ weather,
       </div>
 
       <div className="tabs" role="group" aria-label="View">
+        <button aria-pressed={tab === "profit"} onClick={() => setTab("profit")}>
+          Profit
+        </button>
         <button aria-pressed={tab === "waste"} onClick={() => setTab("waste")}>
           Waste
         </button>
@@ -279,9 +340,18 @@ export function Insights({ weather,
       ) : (
         <div className="card">
           <div className="head-row">
-            <h2>{tab === "waste" ? (haveAllCosts ? "By item, by cost" : "By item, by units") : "How often it sells out"}</h2>
-            <span className="eyebrow small">{tab === "waste" ? "binned · made · $" : "rate · days"}</span>
+            <h2>{tab === "profit" ? "Profit by item"
+              : tab === "waste" ? (haveAllCosts ? "By item, by cost" : "By item, by units")
+              : "How often it sells out"}</h2>
+            <span className="eyebrow small">{tab === "profit" ? "profit · margin"
+              : tab === "waste" ? "binned · made · $" : "rate · days"}</span>
           </div>
+          {tab === "profit" && (
+            <p className="hint">
+              After the middle man and every ingredient, binned ones included.
+              An item marked <strong>loses</strong> cost more than it brought in.
+            </p>
+          )}
           {(tab === "sellout" || !haveAllCosts) && (
             <p className="hint">
               {tab === "waste"
@@ -297,14 +367,18 @@ export function Insights({ weather,
                   <div className="clabel">
                     <span className="cname">{r.item!.displayName}</span>
                     <span className="cval">
-                      {tab === "waste"
-                        ? <>{Math.round(r.wasted)} · {Math.round(r.made)}{r.cost ? <> · <strong>${r.cost.toFixed(0)}</strong></> : null}</>
+                      {tab === "profit"
+                        ? (r.profit < 0
+                          ? <span className="neg"><Icon name="alert" size={12} /> loses <strong>{usd(-r.profit)}</strong></span>
+                          : <><strong>{usd(r.profit)}</strong> · {share(r.profit, r.sales)}</>)
+                        : tab === "waste"
+                        ? <>{Math.round(r.wasted)} · {Math.round(r.made)}{r.cost ? <> · <strong>{usd(r.cost)}</strong></> : null}</>
                         : <><strong>{Math.round(r.selloutRate * 100)}%</strong> of {r.days} days</>}
                     </span>
                   </div>
                   <div className="track">
-                    <div className="fill"
-                         style={{ width: `${(value / scale) * 100}%` }} />
+                    <div className={`fill${value < 0 ? " neg" : ""}`}
+                         style={{ width: `${(Math.abs(value) / scale) * 100}%` }} />
                   </div>
                 </div>
               );
@@ -338,7 +412,7 @@ export function Insights({ weather,
         <div className="scroll-x">
           <table className="grid">
             <thead>
-              <tr><th>Item</th><th>Made</th><th>Binned</th><th>Waste</th><th>Sold out</th></tr>
+              <tr><th>Item</th><th>Made</th><th>Binned</th><th>Waste</th><th>Sold out</th><th>Sales</th><th>Profit</th></tr>
             </thead>
             <tbody>
               {[...rows].sort((a, b) => b.made - a.made).map((r) => (
@@ -348,6 +422,8 @@ export function Insights({ weather,
                   <td className="num">{Math.round(r.wasted)}</td>
                   <td className="num">{Math.round(r.wasteRate * 100)}%</td>
                   <td className="num">{Math.round(r.selloutRate * 100)}%</td>
+                  <td className="num">{usd(r.sales)}</td>
+                  <td className="num">{usd(r.profit)}</td>
                 </tr>
               ))}
             </tbody>

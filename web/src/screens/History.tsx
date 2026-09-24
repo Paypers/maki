@@ -9,6 +9,7 @@
 import type { BizDate } from "../lib/businessDay";
 import type { DayStatIndex } from "../lib/dayStats";
 import type { Item } from "../lib/types";
+import type { Economics } from "../lib/money";
 import type { WeatherEffect } from "../lib/weatherEffect";
 import { ScreenHeader } from "../components/ScreenHeader";
 import { Calendar } from "./Calendar";
@@ -19,15 +20,21 @@ interface Props {
   stats: DayStatIndex;
   items: Item[];
   weather: WeatherEffect | null;
+  /** Prices, promo and the middle man's share, for every dollar on the screen. */
+  econ: Economics;
   onPick: (date: BizDate) => void;
 }
 
-export function History({ today, stats, items, weather, onPick }: Props) {
+export function History({ today, stats, items, weather, econ, onPick }: Props) {
+  // Only counted days have known sales and leftovers; the reports must not
+  // read an uncounted day as "nothing left over".
+  const counted = new Set(stats.dates.filter((d) => stats.byDate.get(d)?.wasteConfirmed));
   return (
     <div>
-      <ScreenHeader title="History" eyebrow="Calendar & reports" />
-      <Calendar today={today} stats={stats} onPick={onPick} embedded />
-      <Insights today={today} items={items} weather={weather} embedded />
+      <ScreenHeader title="History" eyebrow="Money & calendar" />
+      <Calendar today={today} stats={stats} onPick={onPick} embedded keepShare={econ.saleShare} />
+      <Insights today={today} items={items} weather={weather} embedded econ={econ}
+                counted={counted} />
     </div>
   );
 }

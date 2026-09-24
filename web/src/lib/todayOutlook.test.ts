@@ -33,6 +33,7 @@ const stat = (date: string, made: number, wasted: number | null): DayStat => ({
   date, phase: wasted === null ? "open" : "closed",
   made, wasted, soldOut: wasted === null ? null : 0,
   wasteCost: null, costIsFloor: false, itemsMade: 10,
+  sales: null, fee: null, costMade: 0, profit: null, salesIsFloor: false,
   productionConfirmed: true, wasteConfirmed: wasted !== null,
   needsWaste: wasted === null, needsProduction: false,
 });
