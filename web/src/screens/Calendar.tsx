@@ -2,13 +2,15 @@
  * The month, as a grid of numbers.
  *
  * Each day shows ONE number, and a switch above the grid says which: profit,
- * sales, what was thrown away, or rolls left over. A number, not a shaded
+ * sales, what was thrown away, rolls left over, or rolls made -- and on the
+ * days ahead, "made" is the rule's estimated plan. A number, not a shaded
  * bar: the bar this replaced ("how full is the square") had to be decoded
  * against the worst day on screen, and nobody could say what half-full meant.
  *
  * Every mark has one meaning, spelled out in the key under the grid:
  *   $148      counted -- what really happened
  *   ~$140     not happened yet -- projected from recent same weekdays
+ *   ~41       (made) not happened yet -- the rule's plan, an estimate
  *   ?         traded but leftovers never counted -- unknown, and owed
  *   —         a past day with nothing entered -- counts as $0
  *   amber ring  needs something from you
@@ -27,6 +29,7 @@ import {
   estimateDay, monthOf, projectPeriod, share, usd, usdShort,
 } from "../lib/money";
 import { MoneyNote, PeriodCard } from "../components/Money";
+import type { DayPlan } from "../lib/plan";
 import { Icon } from "../components/Icon";
 
 interface Props {
@@ -38,14 +41,17 @@ interface Props {
   embedded?: boolean;
   /** Share of each sale you keep, for the receipt. */
   keepShare?: number;
+  /** The rule's estimated plan for the next two weeks, by date. */
+  plans?: ReadonlyMap<BizDate, DayPlan>;
 }
 
-type Metric = "profit" | "sales" | "waste" | "left";
+type Metric = "profit" | "sales" | "waste" | "left" | "made";
 const METRICS: { key: Metric; label: string; says: string }[] = [
   { key: "profit", label: "Profit", says: "profit that day, after the middle man and ingredients" },
   { key: "sales", label: "Sales", says: "what customers paid that day" },
   { key: "waste", label: "Thrown away", says: "ingredients binned that day, in dollars" },
   { key: "left", label: "Left over", says: "rolls left over that day" },
+  { key: "made", label: "Made", says: "rolls made that day — and ahead, the rule's estimated plan" },
 ];
 const METRIC_KEY = "calendar-metric";
 
@@ -69,7 +75,7 @@ function monthGrid(anchor: BizDate): { cells: BizDate[]; label: string } {
 function readMetric(): Metric {
   try {
     const v = localStorage.getItem(METRIC_KEY);
-    if (v === "profit" || v === "sales" || v === "waste" || v === "left") return v;
+    if (v === "profit" || v === "sales" || v === "waste" || v === "left" || v === "made") return v;
   } catch { /* private window: the default is fine */ }
   return "profit";
 }
@@ -77,17 +83,18 @@ function readMetric(): Metric {
 /** The number a counted day shows, or null when it has none. */
 function actualValue(d: DayStat, m: Metric): number | null {
   if (m === "left") return d.wasted;
+  if (m === "made") return d.made;
   if (m === "profit") return d.profit;
   if (m === "sales") return d.sales;
   return d.wasteCost;
 }
 
 function fmt(v: number, m: Metric): string {
-  return m === "left" ? String(Math.round(v)) : usdShort(v);
+  return m === "left" || m === "made" ? String(Math.round(v)) : usdShort(v);
 }
 
 export function Calendar({
-  today, stats, onPick, onBack, embedded = false, keepShare = 1,
+  today, stats, onPick, onBack, embedded = false, keepShare = 1, plans,
 }: Props) {
   const [anchor, setAnchor] = useState<BizDate>(today);
   const [metric, setMetricState] = useState<Metric>(readMetric);
@@ -183,7 +190,12 @@ export function Calendar({
           {days.map((d) => {
             const inMonth = fromBizDate(d.date).getMonth() === month;
             const needs = d.needsWaste || d.needsProduction;
-            const actual = d.phase === "closed" ? actualValue(d, metric) : null;
+            // What was made is known the moment it is entered; everything else
+            // waits for the leftover count.
+            const actual = d.phase === "closed" || (metric === "made" && d.phase === "open" && d.made > 0)
+              ? actualValue(d, metric) : null;
+            const plan = metric === "made" && d.phase === "future" && inMonth
+              ? plans?.get(d.date) ?? null : null;
             const ahead = d.date >= today && d.phase !== "closed" && d.phase !== "outage";
             const est = ahead && inMonth ? estimateDay(stats, today, d.date) : null;
             const projected = est
@@ -195,6 +207,9 @@ export function Calendar({
             if (actual !== null) { value = fmt(actual, metric); kind = actual < 0 ? "neg" : "actual"; }
             else if (d.phase === "outage") { value = "closed"; kind = "closed"; }
             else if (d.phase === "open" && d.date < today) { value = "?"; kind = "unknown"; }
+            else if (metric === "made") {
+              if (plan && !plan.closed) { value = `~${plan.total}`; kind = "plan"; }
+            }
             else if (d.phase === "empty" && inMonth && d.date < today && stats.dates.length
                      && d.date > stats.dates[0]) { value = "—"; kind = "blank"; }
             else if (projected !== null) { value = `~${fmt(projected, metric)}`; kind = "projected"; }
@@ -203,6 +218,7 @@ export function Calendar({
               actual !== null ? `${METRICS.find((m) => m.key === metric)!.label} ${fmt(actual, metric)}`
                 : kind === "unknown" ? "leftovers not counted"
                 : kind === "projected" ? `projected ${value.slice(1)}`
+                : kind === "plan" ? `about ${value.slice(1)} rolls, estimated plan`
                 : kind === "closed" ? "closed" : "",
               d.needsWaste ? "needs a leftover count" : "",
               d.needsProduction ? "needs today's production" : "",
@@ -218,7 +234,7 @@ export function Calendar({
                 ].filter(Boolean).join(" ")}
                 aria-label={aria}
                 aria-current={d.date === today ? "date" : undefined}
-                disabled={d.phase === "future" && !est}
+                disabled={d.phase === "future" && !est && !plans?.has(d.date)}
                 onClick={() => onPick(d.date)}
               >
                 <span className="n">{fromBizDate(d.date).getDate()}</span>
@@ -230,9 +246,18 @@ export function Calendar({
       </div>
 
       <div className="cal-key" aria-label="Key">
-        <span><b className="kv">{metric === "left" ? "9" : "$148"}</b> counted</span>
-        <span><b className="kv projected">{metric === "left" ? "~9" : "~$140"}</b> projected</span>
-        <span><b className="kv unknown">?</b> not counted</span>
+        {metric === "made" ? (
+          <>
+            <span><b className="kv">41</b> made</span>
+            <span><b className="kv plan">~41</b> estimated plan — will change</span>
+          </>
+        ) : (
+          <>
+            <span><b className="kv">{metric === "left" ? "9" : "$148"}</b> counted</span>
+            <span><b className="kv projected">{metric === "left" ? "~9" : "~$140"}</b> projected</span>
+          </>
+        )}
+        {metric !== "made" && <span><b className="kv unknown">?</b> not counted</span>}
         <span><b className="kv blank">—</b> nothing entered</span>
         <span><i className="k-needs" />needs you</span>
         <span><i className="k-today" />today</span>

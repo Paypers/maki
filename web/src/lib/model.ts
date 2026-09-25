@@ -533,6 +533,21 @@ export function recommendFor(
   entries: Entry[],
   opts: RecommendOptions | number[] = {},
 ): RecommendationSet {
+  return recommendFromObservations(date, items, template, toObservations(entries), opts);
+}
+
+/**
+ * The same, from observations already collapsed out of the entry log -- for
+ * callers that run the rule for many days at once (the plan ahead, the
+ * ambition check) and would otherwise re-read every entry for each one.
+ */
+export function recommendFromObservations(
+  date: BizDate,
+  items: Item[],
+  template: { quantities: Record<number, number> } | null,
+  allObservations: DayObservation[],
+  opts: RecommendOptions | number[] = {},
+): RecommendationSet {
   const ratio: RecommendOptions = Array.isArray(opts) ? { promoWeekdays: opts } : opts;
   const promoWeekdays = ratio.promoWeekdays ?? [3];
   const counted = ratio.counted;
@@ -540,7 +555,7 @@ export function recommendFor(
     ? (ratio.ambition ?? DEFAULT_AMBITION) : DEFAULT_AMBITION;
   // Strictly before the planned day. A recommendation built with same-day data
   // would look excellent and be worthless.
-  const observations = toObservations(entries)
+  const observations = allObservations
     .filter((o) => o.date < date && (!counted || counted.has(o.date)));
   const wd = isoWeekday(date);
   const promo = promoWeekdays.includes(wd);

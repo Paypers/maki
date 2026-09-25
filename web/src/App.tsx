@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import type { BizDate, DayState, Task } from "./lib/businessDay";
-import { addDays, daysBetween, outstandingTasks, previousDay } from "./lib/businessDay";
+import { addDays, daysBetween, isoWeekday, outstandingTasks, previousDay } from "./lib/businessDay";
 import { toObservations } from "./lib/model";
 import * as store from "./lib/store";
 import type { Entry, Item, Settings, Template, TemplateAssignment } from "./lib/types";
@@ -12,6 +12,8 @@ import { DaySheet } from "./components/DaySheet";
 import { buildDayStats, emptyDay, type DayStatIndex } from "./lib/dayStats";
 import { economicsOf, estimateDay } from "./lib/money";
 import { checkAmbition } from "./lib/ambition";
+import { planAhead, planDrift, type PlanContext } from "./lib/plan";
+import { ComingUp } from "./screens/ComingUp";
 import { estimateWeatherEffect, scoreDaysForWeather, type WeatherEffect } from "./lib/weatherEffect";
 import { buildTodayOutlook } from "./lib/todayOutlook";
 import { syncWeather } from "./lib/weatherSync";
@@ -42,6 +44,7 @@ type View =
   | { name: "review"; date: BizDate }
   | { name: "production"; date: BizDate }
   | { name: "history" }
+  | { name: "plan"; date?: BizDate }
   | { name: "setup" }
   | { name: Sub; from: "home" | "setup"; itemId?: number };
 
@@ -50,7 +53,7 @@ type Tab = "today" | "make" | "count" | "history" | "setup";
 /** Which tab a view belongs under, so the bar highlights correctly. */
 function tabOf(view: View): Tab {
   switch (view.name) {
-    case "home": return "today";
+    case "home": case "plan": return "today";
     case "production": return "make";
     case "waste": case "review": return "count";
     case "history": return "history";
@@ -242,6 +245,40 @@ export default function App() {
       ? checkAmbition(stats, allEntries, items, settings, today) : null),
     [stats, allEntries, items, settings, today, ready]);
 
+  // The plan ahead: the rule for each of the next two weeks on what is
+  // counted now, and how much such estimates have moved lately. The drift
+  // re-runs the rule ~80 times, so it is keyed on exactly what the plan reads
+  // -- counted days, prices, rule settings, usual amounts, closed days --
+  // written out as one string. Every refresh hands back new objects for all
+  // of these (see the weather effect above); saving today's production
+  // changes none of them, and does not set this off again.
+  const observations = useMemo(() => toObservations(allEntries), [allEntries]);
+  const planKey = useMemo(() => (settings && ready ? [
+    today,
+    observations.filter((o) => counted.has(o.date))
+      .map((o) => `${o.date}.${o.itemId}.${o.supply}.${o.sold}`).join(","),
+    items.map((i) => `${i.itemId}.${i.price}.${i.unitCost}.${i.promoPrice}.${i.promoWeekdays}`).join(","),
+    JSON.stringify([settings.promoWeekdays, settings.promoMultiplier, settings.salvage,
+                    settings.labourPerRoll, settings.saleShare, settings.ambition,
+                    settings.showSuggestions]),
+    JSON.stringify(templates), JSON.stringify(assignments),
+    stats.dates.filter((d) => stats.byDate.get(d)?.phase === "outage").join(","),
+  ].join("#") : ""), [settings, ready, today, observations, counted, items, templates,
+                       assignments, stats]);
+  const planCtx = useMemo<PlanContext | null>(() => (settings && ready ? {
+    items, observations, settings, counted,
+    usual: (d: BizDate) => store.resolveTemplate(assignments, templates, isoWeekday(d), d),
+    closed: new Set(stats.dates.filter((d) => stats.byDate.get(d)?.phase === "outage")),
+  } : null),
+  // The key holds every input above; the objects themselves change identity
+  // on every refresh whether or not anything in them did.
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  [planKey]);
+  const plans = useMemo(() => (planCtx ? planAhead(today, planCtx) : []), [planCtx, today]);
+  const planByDate = useMemo(() => new Map(plans.map((p) => [p.date, p])), [plans]);
+  const drift = useMemo(() => (planCtx ? planDrift(today, planCtx) : [null, null]),
+                        [planCtx, today]);
+
   if (!ready || !settings) {
     return <div className="app"><div className="card">Loading…</div></div>;
   }
@@ -288,6 +325,7 @@ export default function App() {
       case "make": return setView({ name: "production", date: today });
       case "count": return setView({ name: "waste", date: countDate });
       case "history": return setView({ name: "history" });
+      case "plan": return setView({ name: "plan" });
       default: return sub(target, "home");
     }
   };
@@ -324,6 +362,7 @@ export default function App() {
                 outlook={buildTodayOutlook(today, stats, weather.get(today), weatherEffect)}
                 settings={settings} itemCount={items.length}
                 ambition={ambitionCheck}
+                plans={plans.slice(0, 7)} drift={drift}
                 onGo={goFromHome} onPickDay={setSheetDate} />
         )}
 
@@ -353,7 +392,13 @@ export default function App() {
 
         {view.name === "history" && (
           <History today={today} stats={stats} items={items} weather={weatherEffect}
-                   econ={economicsOf(settings)} onPick={setSheetDate} />
+                   econ={economicsOf(settings)} plans={planByDate} onPick={setSheetDate} />
+        )}
+
+        {view.name === "plan" && (
+          <ComingUp plans={plans} items={items} drift={drift}
+                    suggestions={settings.showSuggestions} initialDate={view.date}
+                    onBack={() => setView({ name: "home" })} />
         )}
 
         {view.name === "setup" && (
@@ -404,6 +449,10 @@ export default function App() {
           entries={allEntries.filter((e) => e.businessDate === sheetDate)}
           econ={economicsOf(settings)}
           estimate={estimateDay(stats, today, sheetDate)}
+          plan={planByDate.get(sheetDate) ?? null}
+          drift={drift}
+          suggestions={settings.showSuggestions}
+          onOpenPlan={(d) => { setSheetDate(null); setView({ name: "plan", date: d }); }}
           onClose={() => setSheetDate(null)}
           onCountWaste={(d) => { setSheetDate(null); setView({ name: "waste", date: d }); }}
           onEditProduction={(d) => { setSheetDate(null); setView({ name: "production", date: d }); }}

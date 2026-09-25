@@ -13,8 +13,13 @@
  *                 end, and where the sales went -- profit, the middle man,
  *                 ingredients, and what was thrown away
  *   everything    nine tiles, one per part of the app, each with its live
- *                 state, so nothing is ever more than one tap from here
+ *                 state, so nothing is ever more than one tap from here --
+ *                 the calendar and its reports share one, since they share a
+ *                 screen, and the plan ahead has the other
  *   the week      profit and leftovers for each of the last seven days
+ *   coming up     the rule's estimated rolls for each of the next seven, and
+ *                 what their ingredients cost -- always under the notice
+ *                 that says they are estimates and will change
  *
  * Colour has one meaning each: amber is owed by you, blue is the rule's
  * number, green is saved, red is late.
@@ -34,6 +39,8 @@ import { syncStatus } from "../lib/cloud";
 import { MoneyNote, PeriodCard } from "../components/Money";
 import { monthOf, projectPeriod, share, usd, usdShort, weekOf } from "../lib/money";
 import type { AmbitionCheck } from "../lib/ambition";
+import type { DayPlan, Drift } from "../lib/plan";
+import { PlanNotice } from "../components/Plan";
 
 export interface DaySummary {
   date: BizDate;
@@ -52,7 +59,7 @@ export interface DaySummary {
 
 export type HomeTarget =
   | "make" | "count" | "history" | "templates" | "items" | "weather" | "cloud" | "reconcile"
-  | "settings";
+  | "settings" | "plan";
 
 interface Props {
   today: BizDate;
@@ -65,6 +72,10 @@ interface Props {
   itemCount: number;
   /** Is the ambition level paying? Null while loading. */
   ambition: AmbitionCheck | null;
+  /** The rule's estimated plan for the next seven days, tomorrow first. */
+  plans: DayPlan[];
+  /** How much such estimates have moved lately; null where too little to say. */
+  drift: (Drift | null)[];
   onOpen: (task: Task) => void;
   onGo: (target: HomeTarget) => void;
   onPickDay: (date: BizDate) => void;
@@ -128,7 +139,7 @@ function Tile({ icon, label, sub, tone, onClick }: {
 
 export function Home({
   today, tasks, pending, summary, stats, outlook, settings, itemCount, ambition,
-  onOpen, onGo, onPickDay,
+  plans, drift, onOpen, onGo, onPickDay,
 }: Props) {
   const known = summary?.trend.filter((v): v is number => v !== null) ?? [];
   const trendAvg = known.length
@@ -215,8 +226,10 @@ export function Home({
         <Tile icon="trash" label="Count"
               sub={owedCounts ? `${owedCounts} ${owedCounts === 1 ? "day" : "days"} owed` : "all counted"}
               tone={owedCounts ? "owed" : "ok"} onClick={() => onGo("count")} />
-        <Tile icon="calendar" label="Calendar" sub="any day" onClick={() => onGo("history")} />
-        <Tile icon="chart" label="Reports" sub="money · waste · sell-outs" onClick={() => onGo("history")} />
+        <Tile icon="calendar" label="Calendar" sub="& reports: money, waste" onClick={() => onGo("history")} />
+        <Tile icon="trend" label="Coming up"
+              sub={plans[0] && !plans[0].closed ? `~${plans[0].total} tomorrow · est.` : "next 2 weeks · est."}
+              tone="rule" onClick={() => onGo("plan")} />
         <Tile icon="clock" label="Usual amounts" sub="per weekday" onClick={() => onGo("templates")} />
         <Tile icon="settings" label="Menu & costs" sub={`${itemCount} items`} onClick={() => onGo("items")} />
         <Tile icon="cloud" label="Weather"
@@ -280,6 +293,29 @@ export function Home({
       </section>
 
       <MoneyNote keepShare={keep} />
+
+      {plans.length > 0 && (
+        <section className="card week-card ahead-card" aria-label="Coming up, estimated">
+          <div className="head-row">
+            <div className="eyebrow">Coming up · est. rolls · ingredients</div>
+            <button className="link" onClick={() => onGo("plan")}>By item</button>
+          </div>
+          <div className="week">
+            {plans.map((p) => (
+              <button key={p.date}
+                      className={`week-day p-future${p.closed ? " closed" : ""}`}
+                      onClick={() => onPickDay(p.date)}
+                      aria-label={`${weekdayName(p.date)} ${formatShort(p.date)}: ` +
+                        (p.closed ? "closed" : `about ${p.total} rolls, estimate`)}>
+                <span className="wd">{weekdayName(p.date).slice(0, 1)} {Number(p.date.slice(-2))}</span>
+                <span className="wp num">{p.closed ? "closed" : `~${p.total}`}</span>
+                <span className="wv num">{p.closed ? "" : `~${usdShort(p.ingredients)}`}</span>
+              </button>
+            ))}
+          </div>
+          <PlanNotice drift={drift} suggestions={settings.showSuggestions} compact />
+        </section>
+      )}
 
       {known.length >= 3 && summary && (
         <section className="card" aria-label="Left over, last 14 days">

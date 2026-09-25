@@ -27,7 +27,7 @@
 import type { BizDate } from "./businessDay";
 import { addDays } from "./businessDay";
 import type { DayStatIndex } from "./dayStats";
-import { AMBITION, AMBITION_NAMES, effectivePrice, recommendFor, toObservations } from "./model";
+import { AMBITION, AMBITION_NAMES, effectivePrice, recommendFromObservations, toObservations } from "./model";
 import type { Entry, Item, Settings } from "./types";
 
 export type AmbitionVerdict = "early" | "too-high" | "paying" | "room" | "steady";
@@ -102,7 +102,7 @@ function settleExtraRolls(entries: Entry[], items: Item[], settings: Settings,
   const byKey = new Map(obs.map((o) => [`${o.date}|${o.itemId}`, o]));
   const byId = new Map(items.map((i) => [i.itemId, i]));
   for (const date of days) {
-    const recs = recommendFor(date, items, null, entries, {
+    const recs = recommendFromObservations(date, items, null, obs, {
       promoWeekdays: settings.promoWeekdays, promoMultiplier: settings.promoMultiplier,
       salvage: settings.salvage, labourPerRoll: settings.labourPerRoll,
       saleShare: settings.saleShare, counted, ambition: settings.ambition,

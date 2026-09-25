@@ -1327,3 +1327,74 @@ p.hint.money-note { font-size: 11.5px; color: var(--text-secondary);
 .hint-inline.amb-extra { display: block; margin-top: 6px; }
 .ambition-levels button { font-size: 12.5px; padding: 0 2px; white-space: nowrap; }
 .card p.hint.ambition-says { margin-top: var(--s2); color: var(--text-primary); }
+
+/* ---- 15. the plan ahead ------------------------------------------------ */
+/* Every number here is the rule's estimate for a day that has not happened:
+   blue, the rule's colour, and never shown without the notice that says it
+   will change. Your usual amounts, standing in where the rule has no
+   opinion, are grey and starred -- the star carries it, not the grey. */
+.plan-note {
+  display: flex; gap: 10px; align-items: flex-start; margin: var(--s3) 0;
+  padding: var(--s3); border: 1px solid var(--rule-line); background: var(--rule-soft);
+  border-radius: var(--r-md); font-size: 13.5px; line-height: 1.45; color: var(--text-primary);
+}
+.plan-note .ico { flex: none; margin-top: 2px; color: var(--rule-ink); }
+.plan-note p { margin: 6px 0 0; color: var(--text-secondary); font-size: 12.5px; }
+.plan-note.compact { padding: 8px 10px; font-size: 12px; margin: var(--s2) 0 0; }
+.plan-note.compact .ico { margin-top: 1px; }
+.tabs button .tab-sub { display: block; font-size: 10.5px; font-weight: 500;
+                        color: var(--text-secondary); margin-top: 1px; }
+.tabs:has(.tab-sub) button { min-height: 46px; line-height: 1.2; flex-direction: column; gap: 0;
+                             white-space: nowrap; }
+.tabs.plan-days { margin-top: 0; }
+.plan-days button { font-size: 12px; padding: 0 1px; white-space: nowrap; min-width: 0; }
+.card.plan-card { padding: var(--s3) var(--s4); }
+.stat .value.rule { color: var(--rule-ink); }
+.plan-stats { margin-top: var(--s2); }
+/* Three figures a row at phone width: "~$1,165" must fit its third. */
+.plan-stats .stat .value { font-size: 22px; letter-spacing: -0.03em; }
+.plan-cols { grid-template-columns: minmax(0, 1fr) 72px; margin-top: var(--s3); }
+.plan-lines { display: flex; flex-direction: column; }
+.plan-line {
+  display: grid; grid-template-columns: minmax(0, 1fr) 72px; align-items: center;
+  column-gap: var(--s2); padding: 7px var(--s1); border-bottom: 1px solid var(--line-soft);
+}
+.plan-line:last-child { border-bottom: 0; }
+.plan-line .nm { min-width: 0; font-size: 14px; font-weight: 600; }
+.plan-line .nm small { display: block; font-size: 11.5px; font-weight: 500; color: var(--rule-ink);
+                       margin-top: 1px; line-height: 1.35; }
+.plan-line .nm small.usual { color: var(--text-secondary); }
+.plan-line .q { text-align: right; font-size: 17px; font-weight: 800; color: var(--rule-ink); }
+.plan-line .q.usual { color: var(--text-secondary); }
+.plan-line sup, .plan-week sup, .plan-key sup { font-size: 0.65em; margin-left: 1px; }
+.plan-key { display: flex; flex-wrap: wrap; gap: 4px 14px; margin: var(--s3) 0 0;
+            font-size: 11.5px; color: var(--text-secondary); }
+.plan-key b { color: var(--rule-ink); font-weight: 800; }
+.plan-key b.usual { color: var(--text-secondary); }
+
+/* All seven days: an item's total on its name line, its days under it. */
+.plan-week-head, .plan-week-row .cells {
+  display: grid; grid-template-columns: repeat(7, minmax(0, 1fr)); text-align: center;
+}
+.plan-week-head {
+  margin: 4px 0 6px; padding: 4px 0; border-radius: var(--r-sm, 4px); background: var(--surface-2);
+  font-family: var(--font-display); font-size: 10.5px; font-weight: 700;
+  color: var(--text-secondary); letter-spacing: 0.02em;
+}
+.plan-week-row { padding: 7px 0 6px; border-bottom: 1px solid var(--line-soft); }
+.plan-week-row:last-child { border-bottom: 0; }
+.plan-week-row .top { display: flex; justify-content: space-between; gap: var(--s2); align-items: baseline; }
+.plan-week-row .nm { font-size: 13.5px; font-weight: 600; min-width: 0;
+                     overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.plan-week-row .tot { font-size: 15px; font-weight: 800; color: var(--rule-ink); flex: none; }
+.plan-week-row .cells { margin-top: 3px; font-size: 13px; font-weight: 600; color: var(--rule-ink); }
+.plan-week-row .cells .usual { color: var(--text-secondary); }
+.plan-week-row .cells .none, .plan-week-row .cells .closed { color: var(--text-dim); }
+
+/* Today: the next seven days, beside the last seven. */
+.ahead-card .week-day .wp { color: var(--rule-ink); }
+.ahead-card .week-day.closed .wp { color: var(--text-dim); font-size: 10.5px; font-weight: 500; }
+
+/* Calendar, "Made": the estimated plan on days ahead. */
+.cal-day .v.plan, .cal-key .kv.plan { color: var(--rule-ink); font-style: italic; font-weight: 600; }
+.cal-metric button { flex: 1 1 auto; font-size: 12.5px; padding: 0 3px; }

@@ -238,6 +238,26 @@ that learn from censored sales and provably converge; Ding, Puterman & Bisi
 (2002), *Operations Research* 50(3), for why, when sales are censored, the best
 amount is higher than the one that looks best today.
 
+### Coming up: the plan ahead, as estimates
+
+The app shows what the rule would have you make on each of the next 14 days:
+a card on Today (rolls and ingredient cost per day), a **Coming up** screen
+(one day's list, or seven days with each item's total), the day sheet for any
+day ahead, and a **Made** view on the calendar. The estimate for a day is the
+rule run for that day on the days counted so far -- what Make would say if
+nothing more were counted in between. Items the rule has no opinion on take
+your usual amount, starred. Weather is not in it; that is applied by hand, on
+the day. Nothing is stored: it is recomputed from the record, so it cannot go
+stale (`web/src/lib/plan.ts`).
+
+Every place a plan appears carries the notice that these are estimates and
+will change, with how much they have moved lately, measured live: the rule
+re-run over the last four weeks as it would have read 1 and 7 days early,
+against the morning's own number. On the record to Sep 21, **93%** of items
+matched a day ahead, **76%** a week ahead, and **98%** were within one roll.
+Numbers that include a climbing or test roll are marked `+`; they are the ones
+most likely to move.
+
 ---
 
 ## 3. Backtest methodology
@@ -540,7 +560,7 @@ npm run wx:verify                           # the import, and that the sync sett
 npm run wx:shots                            # the weather card, light and dark
 ```
 
-Tests: `python -m pytest tests/ -q` (**236**) and `cd web && npm test` (**207**).
+Tests: `python -m pytest tests/ -q` (**236**) and `cd web && npm test` (**216**).
 
 The operator's real workbook and all extracted data stay out of version control;
 `tests/fixtures/fixture.xlsx` is a committed, anonymised stand-in that reproduces

@@ -14,6 +14,10 @@
  * uncounted day shows only its ingredient bill, the one figure that is known.
  * Today and the days ahead show what recent same weekdays point to, marked
  * as a projection.
+ *
+ * The days ahead also show what the rule would have you make, item by item --
+ * an estimate, under the notice that says so, since each morning's counts
+ * move it. Past two weeks there is no plan, and the sheet says why.
  */
 
 import { useEffect, useRef } from "react";
@@ -27,6 +31,9 @@ import type { DayEstimate, Economics } from "../lib/money";
 import { itemMoney, share, usd } from "../lib/money";
 import { Icon } from "./Icon";
 import { Ledger } from "./Money";
+import type { DayPlan, Drift } from "../lib/plan";
+import { PLAN_DAYS } from "../lib/plan";
+import { PlanLines, PlanNotice, PlanStats } from "./Plan";
 
 interface Props {
   day: DayStat;
@@ -37,6 +44,11 @@ interface Props {
   econ: Economics;
   /** What recent same weekdays point to, for a day not yet counted. */
   estimate: DayEstimate | null;
+  /** The rule's estimated plan, for a day in the next two weeks. */
+  plan: DayPlan | null;
+  drift: (Drift | null)[];
+  suggestions: boolean;
+  onOpenPlan: (date: BizDate) => void;
   onClose: () => void;
   onCountWaste: (date: BizDate) => void;
   onEditProduction: (date: BizDate) => void;
@@ -46,12 +58,14 @@ function relative(date: BizDate, today: BizDate): string {
   const n = daysBetween(date, today);
   if (n === 0) return "today";
   if (n === 1) return "yesterday";
+  if (n === -1) return "tomorrow";
   if (n < 0) return `in ${-n} days`;
   return `${n} days ago`;
 }
 
 export function DaySheet({
-  day, today, items, entries, econ, estimate, onClose, onCountWaste, onEditProduction,
+  day, today, items, entries, econ, estimate, plan, drift, suggestions,
+  onOpenPlan, onClose, onCountWaste, onEditProduction,
 }: Props) {
   const closeRef = useRef<HTMLButtonElement>(null);
 
@@ -104,7 +118,7 @@ export function DaySheet({
           </button>
         </div>
 
-        {isFuture && !showEstimate && (
+        {isFuture && !showEstimate && !plan && (
           <p className="hint">Hasn't happened yet.</p>
         )}
 
@@ -129,6 +143,22 @@ export function DaySheet({
               </div>
             </div>
           </div>
+        )}
+
+        {plan && !plan.closed && (
+          <div className="sheet-plan">
+            <div className="eyebrow">Likely to make · estimate</div>
+            <PlanNotice drift={drift} suggestions={suggestions} compact />
+            <PlanStats plans={[plan]} />
+            <PlanLines plan={plan} items={items} />
+          </div>
+        )}
+        {isFuture && !plan && daysBetween(today, day.date) > PLAN_DAYS && (
+          <p className="hint">
+            What to make is estimated up to {PLAN_DAYS} days ahead. Further out, two
+            weeks or more of counts will come in first, so a number now would be
+            mostly a guess.
+          </p>
         )}
 
         {day.phase === "outage" && (
@@ -239,6 +269,9 @@ export function DaySheet({
               <Icon name="check" size={18} />
               Count leftovers
             </button>
+          )}
+          {plan && !plan.closed && (
+            <button onClick={() => onOpenPlan(day.date)}>See the next two weeks by item</button>
           )}
           {!isFuture && day.phase !== "outage" && (
             <button onClick={() => onEditProduction(day.date)}>

@@ -50,10 +50,20 @@ export function weeksBack(s: BizDate, weeks = 1): BizDate {
   return addDays(s, -7 * weeks);
 }
 
-/** ISO weekday, 1 = Monday .. 7 = Sunday. Matches template_assignments.weekday. */
+const weekdays = new Map<BizDate, number>();
+
+/** ISO weekday, 1 = Monday .. 7 = Sunday. Matches template_assignments.weekday.
+ *  Remembered per date: the rule asks it of every past day for every item on
+ *  every day it plans, and a date's weekday does not change. */
 export function isoWeekday(s: BizDate): number {
-  const js = fromBizDate(s).getDay(); // 0 = Sunday
-  return js === 0 ? 7 : js;
+  let wd = weekdays.get(s);
+  if (wd === undefined) {
+    const js = fromBizDate(s).getDay(); // 0 = Sunday
+    wd = js === 0 ? 7 : js;
+    if (weekdays.size > 20_000) weekdays.clear();
+    weekdays.set(s, wd);
+  }
+  return wd;
 }
 
 const WEEKDAY_NAMES = [
