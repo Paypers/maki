@@ -12,8 +12,10 @@
  * exactly what the Make screen would say on D if nothing more were counted in
  * between. An item the rule has no opinion on (under a week on record, no
  * price or recipe) takes your usual amount for that weekday, as the Make
- * screen does, and is marked so. Weather is not in it: that adjustment is only
- * ever applied by hand, on the day.
+ * screen does, and is marked so. The plan itself is what Make would suggest
+ * before any weather is applied; where the forecast's rain would lower it,
+ * the day also carries `rain` -- the same rule with the rain read in, which
+ * Make offers on the day and the day sheet shows ahead of it.
  *
  * How much the estimates move is measured, not assumed. `planDrift` re-runs
  * the rule over the last four weeks as it would have looked 1 and 7 days
@@ -65,6 +67,8 @@ export interface DayPlan {
   tests: number;
   /** Items at your usual amount because the rule had no opinion. */
   usualItems: number;
+  /** With the forecast's rain read in, where it lowers the total. */
+  rain?: { chance: number; ratio: number; total: number };
 }
 
 export interface PlanContext {
@@ -79,6 +83,9 @@ export interface PlanContext {
   usual: (date: BizDate) => { quantities: Record<number, number> } | null;
   /** Days marked closed ahead of time. */
   closed?: ReadonlySet<BizDate>;
+  /** Rain forecast for a date, as the rule reads it (weatherEffect's
+   *  `advice.rain`): null where there is no forecast or no effect. */
+  weatherFor?: (date: BizDate) => { factor: number; chance: number; ratio: number } | null;
 }
 
 function ruleOptions(ctx: PlanContext, counted: ReadonlySet<BizDate>): RecommendOptions {
@@ -102,11 +109,20 @@ export function planDay(date: BizDate, ctx: PlanContext): DayPlan {
                                         ruleOptions(ctx, ctx.counted))
         .recommendations.map((r) => [r.itemId, r]))
     : new Map();
+  const wx = ctx.settings.showSuggestions && ctx.weatherFor ? ctx.weatherFor(date) : null;
+  const wet = wx && wx.factor < 1
+    ? new Map(recommendFromObservations(date, ctx.items, usual, ctx.observations,
+                                        { ...ruleOptions(ctx, ctx.counted),
+                                          weather: { factor: wx.factor, chance: wx.chance } })
+        .recommendations.map((r) => [r.itemId, r]))
+    : null;
+  let rainTotal = 0;
   const out: DayPlan = { ...empty, closed: false };
   for (const item of ctx.items) {
     const rec = recs.get(item.itemId);
     const fromRule = rec?.modelQty ?? null;
     const qty = fromRule ?? usual?.quantities[item.itemId] ?? 0;
+    if (wet) rainTotal += wet.get(item.itemId)?.modelQty ?? qty;
     if (qty <= 0) continue;
     const planned: PlannedItem = {
       itemId: item.itemId, qty,
@@ -122,6 +138,9 @@ export function planDay(date: BizDate, ctx: PlanContext): DayPlan {
     out.extraRolls += planned.climbSteps;
     if (planned.testing) out.tests += 1;
     if (planned.source === "usual") out.usualItems += 1;
+  }
+  if (wx && wet && rainTotal < out.total) {
+    out.rain = { chance: wx.chance, ratio: wx.ratio, total: rainTotal };
   }
   return out;
 }

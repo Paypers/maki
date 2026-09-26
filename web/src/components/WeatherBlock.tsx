@@ -17,8 +17,41 @@
 import { useState } from "react";
 import type { WeatherEffect, BandEffect } from "../lib/weatherEffect";
 import { MIN_BAND_DAYS, MIN_T } from "../lib/weatherEffect";
+import type { WeatherAlert } from "../lib/weather";
 import { BAND_LABEL } from "../lib/weather";
 import { Icon } from "./Icon";
+
+const WD = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
+
+/**
+ * The Weather Service's own warnings, in its own words, where the plan is
+ * made. Shown whenever one is active for the kiosk's spot. It carries no
+ * percentage on purpose: a named storm or a flood warning is a day the record
+ * has almost never seen, and a number fitted to a summer of showers would be
+ * a guess dressed as a measurement. The rain adjustment is the floor for such
+ * a day, not the ceiling -- the operator, who can see the sky, sets the rest.
+ */
+export function AlertBanner({ alerts }: { alerts: WeatherAlert[] }) {
+  const until = (a: WeatherAlert) => {
+    if (!a.ends) return "";
+    const d = new Date(a.ends);
+    return Number.isNaN(d.getTime()) ? ""
+      : ` until ${d.toLocaleString(undefined, { weekday: "short", hour: "numeric", minute: "2-digit" })}`;
+  };
+  return (
+    <div className="banner warn wx-alert" role="status">
+      <Icon name="alert" size={16} className="ico" />
+      <div>
+        <strong>National Weather Service: {alerts.map((a) => `${a.event}${until(a)}`).join(" · ")}.</strong>
+        <p>
+          Bigger weather than anything in your record, so the app can't put a
+          number on it. What rain usually costs is the least to expect — if it
+          looks bad out, make less than the suggestion.
+        </p>
+      </div>
+    </div>
+  );
+}
 
 function verdict(b: BandEffect): { text: string; tone: "solid" | "weak" | "none" } {
   if (b.n < MIN_BAND_DAYS) {
@@ -86,6 +119,37 @@ export function WeatherBlock({ effect }: { effect: WeatherEffect }) {
         })}
       </div>
 
+      {effect.rain.usable && (
+        <>
+          <div className="head-row" style={{ marginTop: 14 }}>
+            <div className="eyebrow">Rain, by day of the week</div>
+            <span className="eyebrow small">{effect.rain.n} rainy days</span>
+          </div>
+          <p className="hint" style={{ marginTop: 6 }}>
+            Rain does not hit every day alike here. Each day's figure is pulled
+            toward the all-days average by as much as its own few rainy days
+            are noise, so a day with three wet ones cannot claim much.
+          </p>
+          <div className="wx-weekdays">
+            {effect.rain.byWeekday.map((w) => {
+              const pct = Math.round((w.ratio - 1) * 100);
+              const solid = w.se > 0 && Math.abs(w.ratio - 1) >= MIN_T * w.se;
+              return (
+                <div className={`wx-wd t-${solid ? "solid" : "weak"}`} key={w.weekday}>
+                  <span className="k">{WD[w.weekday - 1]}</span>
+                  <span className="v num">{pct > 0 ? "+" : ""}{pct}%</span>
+                  <span className="n">±{Math.round(196 * w.se)} · {w.n} wet</span>
+                </div>
+              );
+            })}
+          </div>
+          <p className="hint" style={{ marginTop: 8 }}>
+            Bold = clear of chance. The production sheet uses the day it is
+            planning for, weighted by the forecast's chance of rain.
+          </p>
+        </>
+      )}
+
       {/* The honest headline. Written out, because "t = 1.8" is not a
           sentence anyone should have to translate at 5am. */}
       <div className={`banner wx-verdict-banner${anySolid ? "" : " soft"}`}>
@@ -106,9 +170,24 @@ export function WeatherBlock({ effect }: { effect: WeatherEffect }) {
           <ul className="plain">
             <li>
               Every rainy day is compared with <strong>its own weekday's dry
-              average</strong>, then those ratios are pooled. Comparing all wet
+              days within four weeks either side</strong>. Comparing all wet
               days with all dry days would mostly measure which weekdays
-              happened to be rainy.
+              happened to be rainy, and a whole-summer average would read a
+              busy May as weather.
+            </li>
+            <li>
+              <strong>By weekday, then shrunk.</strong> Rain is measured for
+              each day of the week, then each figure is pulled toward the
+              all-days average — hard when a day has few rainy examples, barely
+              when it has many and they agree. On pure noise this marks a day
+              as different about one time in twenty, which is what "clear of
+              chance" means.
+            </li>
+            <li>
+              Rain is one band for the forecast: heavy days have not sold less
+              than light ones here, so the amount is not used — the forecast's
+              <strong> chance of rain</strong> is, because that is the part a
+              forecast actually knows.
             </li>
             <li>
               Rain is measured <strong>during your trading hours only</strong>.

@@ -41,6 +41,8 @@ import { monthOf, projectPeriod, share, usd, usdShort, weekOf } from "../lib/mon
 import type { AmbitionCheck } from "../lib/ambition";
 import type { DayPlan, Drift } from "../lib/plan";
 import { PlanNotice } from "../components/Plan";
+import { AlertBanner } from "../components/WeatherBlock";
+import type { WeatherAlert } from "../lib/weather";
 
 export interface DaySummary {
   date: BizDate;
@@ -76,6 +78,8 @@ interface Props {
   plans: DayPlan[];
   /** How much such estimates have moved lately; null where too little to say. */
   drift: (Drift | null)[];
+  /** The Weather Service's active alerts for the kiosk. */
+  alerts: WeatherAlert[];
   onOpen: (task: Task) => void;
   onGo: (target: HomeTarget) => void;
   onPickDay: (date: BizDate) => void;
@@ -139,7 +143,7 @@ function Tile({ icon, label, sub, tone, onClick }: {
 
 export function Home({
   today, tasks, pending, summary, stats, outlook, settings, itemCount, ambition,
-  plans, drift, onOpen, onGo, onPickDay,
+  plans, drift, alerts, onOpen, onGo, onPickDay,
 }: Props) {
   const known = summary?.trend.filter((v): v is number => v !== null) ?? [];
   const trendAvg = known.length
@@ -174,6 +178,8 @@ export function Home({
   return (
     <div>
       <ScreenHeader title="Today" eyebrow={`${weekdayName(today).slice(0, 3)} · ${formatShort(today)}`} />
+
+      {alerts.length > 0 && <AlertBanner alerts={alerts} />}
 
       <TodayCard outlook={outlook} weekday={weekdayName(today)}
                  configured={weatherOn} onOpenWeather={() => onGo("weather")} />
@@ -214,7 +220,7 @@ export function Home({
       {ambition && <AmbitionCard check={ambition} onChange={() => onGo("settings")} />}
 
       <section aria-label="Money">
-        <PeriodCard title="This week" p={weekMoney} keepShare={keep} />
+        <PeriodCard title="This week" p={weekMoney} keepShare={keep} hero />
         <PeriodCard showRange={false} p={monthMoney} keepShare={keep}
                     title={`This month · ${new Date(`${mFrom}T12:00:00`).toLocaleDateString(undefined, { month: "long" })}`} />
       </section>
@@ -306,13 +312,28 @@ export function Home({
                       className={`week-day p-future${p.closed ? " closed" : ""}`}
                       onClick={() => onPickDay(p.date)}
                       aria-label={`${weekdayName(p.date)} ${formatShort(p.date)}: ` +
-                        (p.closed ? "closed" : `about ${p.total} rolls, estimate`)}>
+                        (p.closed ? "closed" : `about ${p.total} rolls, estimate`) +
+                        (p.rain ? `; rain ${Math.round(p.rain.chance * 100)}% likely` : "")}>
                 <span className="wd">{weekdayName(p.date).slice(0, 1)} {Number(p.date.slice(-2))}</span>
                 <span className="wp num">{p.closed ? "closed" : `~${p.total}`}</span>
-                <span className="wv num">{p.closed ? "" : `~${usdShort(p.ingredients)}`}</span>
+                {/* A rainy day trades its ingredient line for the rain: what
+                    changes the plan is worth the space more. */}
+                <span className={`wv num${p.rain ? " rain" : ""}`}>
+                  {p.closed ? "" : p.rain ? `rain ${Math.round(p.rain.chance * 100)}%` : `~${usdShort(p.ingredients)}`}
+                </span>
               </button>
             ))}
           </div>
+          {(() => {
+            const wet = plans.find((p) => p.rain && !p.closed);
+            return wet && wet.rain ? (
+              <p className="hint-inline ahead-rain">
+                <strong>{weekdayName(wet.date)}: rain {Math.round(wet.rain.chance * 100)}% likely.</strong>{" "}
+                Rainy {weekdayName(wet.date)}s here have sold about {Math.round((1 - wet.rain.ratio) * 100)}% less —
+                with the rain read in, make ~{wet.rain.total} instead of ~{wet.total}. Make offers it on the day.
+              </p>
+            ) : null;
+          })()}
           <PlanNotice drift={drift} suggestions={settings.showSuggestions} compact />
         </section>
       )}

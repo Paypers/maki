@@ -92,6 +92,10 @@ export interface Recommendation {
   /** The climber's evidence, and how many rolls it kept after the budget. */
   climb?: import("./model").Climb | null;
   climbSteps?: number;
+  /** Rolls rain took off this item, when a rain adjustment was asked for. */
+  weatherCut?: number;
+  /** Why, in the rule's terms: "rain 70%: a 4th would sell ~19%, needs 21%". */
+  weatherNote?: string;
 }
 
 export interface QueuedMutation {
@@ -130,6 +134,9 @@ export interface Recipe {
 
 // --------------------------------------------------------------- settings --
 
+/** The app's visual themes. Layout is the same in each; see lib/theme.ts. */
+export type Look = "default" | "washi" | "bento";
+
 export interface Settings {
   /** Local hour the business day flips. 0 = midnight. */
   rolloverHour: number;
@@ -156,6 +163,9 @@ export interface Settings {
   kioskName: string;
   /** Dark is the design; light is for when the store lights are on. */
   theme: "system" | "dark" | "light";
+  /** Which theme: colours, faces, corners and depth. Like `theme`, a
+   *  property of this phone, never synced. */
+  look: Look;
 
   // ---- weather ----
   /** Where the kiosk is, resolved from a ZIP. Null until it is set. */
@@ -193,6 +203,7 @@ export const DEFAULT_SETTINGS: Settings = {
   ambitionSince: null,
   showSuggestions: true,
   theme: "system",
+  look: "default",
   location: null,
   hours: { open: 8, close: 20 },
   weatherEnabled: false,

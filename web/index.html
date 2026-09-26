@@ -5,6 +5,17 @@
     <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
     <meta name="theme-color" content="#0f0f0e" media="(prefers-color-scheme: dark)" />
     <meta name="theme-color" content="#f4f2ec" media="(prefers-color-scheme: light)" />
+    <!-- Before the first paint: the theme this phone chose last time, from the
+         mirror lib/theme.ts keeps. Without it a Washi or Bento phone would
+         flash Default for a moment on every launch, until Settings loads. -->
+    <script>
+      try {
+        var look = localStorage.getItem("kiosk-look");
+        var theme = localStorage.getItem("kiosk-theme");
+        if (look === "washi" || look === "bento") document.documentElement.dataset.look = look;
+        if (theme === "dark" || theme === "light") document.documentElement.dataset.theme = theme;
+      } catch (e) { /* no storage: Default until Settings loads */ }
+    </script>
     <link rel="preload" href="/fonts/space-grotesk-latin.woff2" as="font" type="font/woff2" crossorigin />
     <link rel="preload" href="/fonts/manrope-latin.woff2" as="font" type="font/woff2" crossorigin />
     <title>Kiosk</title>

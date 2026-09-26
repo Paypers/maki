@@ -349,10 +349,11 @@ export async function saveSettings(settings: Settings,
                                    opts: { queue?: boolean } = {}): Promise<void> {
   await put("meta", { key: "settings", value: settings });
   if (opts.queue !== false) {
-    // `theme` is deliberately not synced: it is a property of the device you
-    // are holding, not of the business. Dark on the phone at 5am and light on
-    // a laptop at noon is the correct outcome, not a conflict to resolve.
-    const { theme: _theme, ...shared } = settings;
+    // `theme` and `look` are deliberately not synced: they are properties of
+    // the device you are holding, not of the business. Dark on the phone at
+    // 5am and light on a laptop at noon is the correct outcome, not a
+    // conflict to resolve -- and so is Washi on one and Default on the other.
+    const { theme: _theme, look: _look, ...shared } = settings;
     await enqueue({ mutationId: newId(), kind: "settings", payload: shared,
                     createdAt: new Date().toISOString(), attempts: 0 });
   }
@@ -759,7 +760,8 @@ function weatherDiffers(a: DayWeather | undefined, b: DayWeather): boolean {
   if (!a) return true;
   return a.precip !== b.precip || a.snow !== b.snow
       || a.tempMax !== b.tempMax || a.tempMin !== b.tempMin
-      || a.code !== b.code || a.forecast !== b.forecast;
+      || a.code !== b.code || a.forecast !== b.forecast
+      || a.rainChance !== b.rainChance;
 }
 
 /** Returns how many rows CHANGED, not how many were written. */

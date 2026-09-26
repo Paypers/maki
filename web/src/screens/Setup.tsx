@@ -11,6 +11,7 @@
 import { useState } from "react";
 import type { Settings } from "../lib/types";
 import { AMBITION_NAMES } from "../lib/model";
+import { lookInfo, lookOf } from "../lib/theme";
 import { CANONICAL_HOST } from "../lib/canonical";
 import { checkForUpdate } from "../lib/appUpdate";
 import * as cloud from "../lib/cloud";
@@ -28,6 +29,7 @@ interface Props {
 }
 
 const WEEKDAYS = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"];
+const BRIGHTNESS: Record<string, string> = { system: "match phone", dark: "dark", light: "light" };
 
 function Row({ label, value, tone, onClick }: {
   label: string; value?: string; tone?: "rule" | "ok" | "dim"; onClick?: () => void;
@@ -80,7 +82,7 @@ export function Setup({ settings, itemCount, pending, onOpen }: Props) {
         <Row label="Your time per roll, share kept"
              value={`$${settings.labourPerRoll.toFixed(2)} · ${Math.round(settings.saleShare * 100)}%`}
              onClick={() => onOpen("settings")} />
-        <Row label="Day rollover, leftovers, theme" onClick={() => onOpen("settings")} />
+        <Row label="Day rollover, leftovers" onClick={() => onOpen("settings")} />
       </section>
 
       <h2 className="setgroup">Weather</h2>
@@ -104,6 +106,9 @@ export function Setup({ settings, itemCount, pending, onOpen }: Props) {
 
       <h2 className="setgroup">App</h2>
       <section className="setlist">
+        <Row label="Theme"
+             value={`${lookInfo(lookOf(settings.look)).name} · ${BRIGHTNESS[settings.theme] ?? "match phone"}`}
+             onClick={() => onOpen("settings")} />
         <Row label="Address" value={CANONICAL_HOST} />
         <Row label="Check for an update" value={update ?? undefined} onClick={() => void check()} />
       </section>

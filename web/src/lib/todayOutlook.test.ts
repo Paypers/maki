@@ -17,10 +17,10 @@
 
 import { describe, expect, it } from "vitest";
 import { buildTodayOutlook, typicalRatio, MIN_BASELINE_DAYS } from "./todayOutlook";
-import { estimateWeatherEffect, type ScoredDay } from "./weatherEffect";
+import { estimateWeatherEffect, typicalFor, type ScoredDay } from "./weatherEffect";
 import type { DayStat, DayStatIndex } from "./dayStats";
 import type { DayWeather } from "./weather";
-import { addDays } from "./businessDay";
+import { addDays, isoWeekday } from "./businessDay";
 
 const TODAY = "2026-09-22";        // a Tuesday
 
@@ -198,9 +198,11 @@ describe("re-centring", () => {
   });
 
   it("keeps the two ends consistent: dry x typical = 1", () => {
+    // Typical for THIS weekday: rain is measured by weekday now, and a
+    // Tuesday's typical day is Tuesdays' own mix of wet and dry.
     const e = effectWith(80, 20, 0.10);
     const dry = buildTodayOutlook(TODAY, index(tuesdays(8, 60, 40)), wx(TODAY), e);
-    expect(dry.relative * typicalRatio(e)).toBeCloseTo(1, 6);
+    expect(dry.relative * typicalFor(e, isoWeekday(TODAY))).toBeCloseTo(1, 6);
   });
 });
 

@@ -18,7 +18,9 @@
 import { useEffect, useRef, useState } from "react";
 import * as store from "../lib/store";
 import { downloadBackup } from "../lib/backup";
-import type { Settings as SettingsType } from "../lib/types";
+import type { Look, Settings as SettingsType } from "../lib/types";
+import type { LookInfo, Mode } from "../lib/theme";
+import { LOOKS, applyLook, effectiveMode, lookInfo, lookOf } from "../lib/theme";
 import { AMBITION, AMBITION_NAMES } from "../lib/model";
 import { Icon } from "../components/Icon";
 
@@ -37,6 +39,30 @@ function ambitionSays(level: number): string {
   const tail = level === 5 ? " Expect more leftovers — this takes near even-odds bets." : "";
   return `${lead}: adds a roll only when ${Math.round(sure * 100)}% sure it pays; up to ${most} extra ` +
     `on an item, ${budget} extra across the case a day.${tail}`;
+}
+
+/**
+ * A thumbnail of a look in its own colours, whatever look is on: a card on
+ * its ground with a figure in its display face, a bar of owed amber and one
+ * of the rule's blue. Decoration for the button's name, so hidden from
+ * screen readers.
+ */
+function LookPreview({ info, mode }: { info: LookInfo; mode: Mode }) {
+  const c = info.swatch[mode];
+  return (
+    <span className="look-preview" aria-hidden="true"
+          style={{ background: c.bg, borderColor: c.line, borderRadius: info.radius + 2 }}>
+      <span className="lp-card"
+            style={{ background: c.surface, borderColor: c.line, borderRadius: info.radius }}>
+        <span className="lp-num" style={{ color: c.ink, fontFamily: info.display }}>$955</span>
+        <span className="lp-row">
+          <i style={{ background: c.accent }} />
+          <i style={{ background: c.rule }} />
+        </span>
+        <span className="lp-line" style={{ background: c.muted }} />
+      </span>
+    </span>
+  );
 }
 
 export function Settings({ onBack, onChanged }: Props) {
@@ -58,6 +84,8 @@ export function Settings({ onBack, onChanged }: Props) {
   }, []);
 
   if (!draft) return <div className="card">Loading…</div>;
+  const look = lookOf(draft.look);
+  const mode = effectiveMode(draft.theme);
 
   const set = <K extends keyof SettingsType>(k: K, v: SettingsType[K]) => {
     const next = { ...draft, [k]: v };
@@ -71,6 +99,24 @@ export function Settings({ onBack, onChanged }: Props) {
     const next = { ...draft, ambition: level, ambitionSince: store.today(draft.rolloverHour) };
     setDraft(next);
     void store.saveSettings(next).then(onChanged);
+  }
+
+  /** A theme or light/dark goes on the page at once, then into Settings --
+   *  waiting for the save and the app's reload of everything would make the
+   *  tap feel ignored for a moment. */
+  function setLook(next: Look) {
+    if (!draft || draft.look === next) return;
+    const cfg = { ...draft, look: next };
+    setDraft(cfg);
+    applyLook(next, cfg.theme);
+    void store.saveSettings(cfg).then(onChanged);
+  }
+  function setBrightness(next: SettingsType["theme"]) {
+    if (!draft || draft.theme === next) return;
+    const cfg = { ...draft, theme: next };
+    setDraft(cfg);
+    applyLook(lookOf(cfg.look), next);
+    void store.saveSettings(cfg).then(onChanged);
   }
 
   function toggleWeekday(index: number) {
@@ -156,20 +202,41 @@ export function Settings({ onBack, onChanged }: Props) {
         </p>
       </div>
 
-      <div className="card">
-        <h2>Appearance</h2>
+      <div className="card" id="theme">
+        <h2>Theme</h2>
         <p className="hint">
-          Dark is the design — it's built for a dim kiosk before the store
-          lights come on. Light is the same thing for daylight.
+          How the app looks on this phone. Every screen stays where it is —
+          only colours, type and edges change — and colours keep their jobs in
+          every theme: amber is owed, blue is the rule, green is saved, red is late.
         </p>
-        <div className="tabs" role="group" aria-label="Theme">
+        <div className="looks" role="group" aria-label="Theme">
+          {LOOKS.map((l) => (
+            <button key={l.id} className="look-pick" aria-pressed={look === l.id}
+                    onClick={() => setLook(l.id)}>
+              <LookPreview info={l} mode={mode} />
+              <span className="look-name">
+                {look === l.id && <Icon name="check" size={14} className="ico" />}
+                {l.name}
+              </span>
+            </button>
+          ))}
+        </div>
+        <p className="hint look-says">{lookInfo(look).blurb}</p>
+
+        <h3 className="subhead">Light or dark</h3>
+        <div className="tabs" role="group" aria-label="Light or dark">
           {(["system", "dark", "light"] as const).map((t) => (
             <button key={t} aria-pressed={draft.theme === t}
-                    onClick={() => set("theme", t)}>
+                    onClick={() => setBrightness(t)}>
               {t === "system" ? "Match phone" : t === "dark" ? "Dark" : "Light"}
             </button>
           ))}
         </div>
+        <p className="hint">
+          Dark is built for a dim kiosk before the store lights come on; light
+          is the same thing for daylight. Every theme has both. Both choices
+          stay on this phone and aren't synced.
+        </p>
       </div>
 
       <div className="card">

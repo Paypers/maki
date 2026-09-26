@@ -21,7 +21,8 @@ import { describeSaveError } from "../lib/saveError";
 import { Icon } from "../components/Icon";
 import { ScreenHeader } from "../components/ScreenHeader";
 import { QuantityList, type RowSpec } from "./QuantityList";
-import { WET_INCHES, describe as describeWeather, type DayWeather } from "../lib/weather";
+import { WET_INCHES, describe as describeWeather, type DayWeather, type WeatherAlert } from "../lib/weather";
+import { AlertBanner } from "../components/WeatherBlock";
 import { adviseFor, planFactor, scaleQuantities, type WeatherEffect } from "../lib/weatherEffect";
 
 interface Props {
@@ -34,6 +35,9 @@ interface Props {
   onEditTemplate: () => void;
   /** Today's weather, if a location is set and it has been fetched. */
   weather?: DayWeather;
+  /** The Weather Service's active alerts for the kiosk: flood watches,
+   *  storm warnings. Empty is the normal answer. */
+  alerts?: WeatherAlert[];
   /** What the record says weather does here. Null until there is enough. */
   weatherEffect: WeatherEffect | null;
   /** Days whose leftovers were counted. Every other day is kept out of the
@@ -46,7 +50,7 @@ const RECORD_DAYS = 8;
 
 export function Production({
   date, items, templates, assignments, settings, onDone, onEditTemplate,
-  weather, weatherEffect, counted,
+  weather, weatherEffect, counted, alerts = [],
 }: Props) {
   /** The operator has to ask for the weather adjustment; it never self-applies. */
   const [applyWeather, setApplyWeather] = useState(false);
@@ -69,17 +73,18 @@ export function Production({
     return () => { live = false; };
   }, [date]);
 
+  const ruleOpts = useMemo(() => ({
+    promoWeekdays: settings.promoWeekdays,
+    promoMultiplier: settings.promoMultiplier,
+    salvage: settings.salvage,
+    labourPerRoll: settings.labourPerRoll,
+    saleShare: settings.saleShare,
+    ambition: settings.ambition,
+    counted,
+  }), [settings, counted]);
   const recSet = useMemo(
-    () => recommendFor(date, items, template, history ?? [], {
-      promoWeekdays: settings.promoWeekdays,
-      promoMultiplier: settings.promoMultiplier,
-      salvage: settings.salvage,
-      labourPerRoll: settings.labourPerRoll,
-      saleShare: settings.saleShare,
-      ambition: settings.ambition,
-      counted,
-    }),
-    [date, items, template, history, settings, counted],
+    () => recommendFor(date, items, template, history ?? [], ruleOpts),
+    [date, items, template, history, ruleOpts],
   );
   const recByItem = useMemo(
     () => new Map(recSet.recommendations.map((r) => [r.itemId, r])),
@@ -139,15 +144,43 @@ export function Production({
     () => (weatherEffect ? adviseFor(weather, weatherEffect) : null),
     [weather, weatherEffect],
   );
+  // RAIN goes through the rule itself: each item's chance of selling re-read
+  // at the demand rain leaves (model.ts, thinnedChance), so the rolls that
+  // come off are the ones that were only just worth making -- not a flat
+  // percentage shaved off everything. Worked out whether or not it is
+  // applied, so the advisory can say what applying it would change.
+  const rain = advice?.rain ?? null;
+  // Only where the weekday's effect is credible (CREDIBLE_Z): cutting on a
+  // noisy estimate lost money in the backtest.
+  const rainFactor = rain && rain.credible && rain.relative < 1 ? rain.relative : null;
+  const rainChance = rain?.chance ?? 0;
+  const rainSet = useMemo(
+    () => (rainFactor === null ? null
+      : recommendFor(date, items, template, history ?? [],
+                     { ...ruleOpts, weather: { factor: rainFactor, chance: rainChance } })),
+    [date, items, template, history, ruleOpts, rainFactor, rainChance],
+  );
+  const ruleTotal = recSet.recommendations.reduce((s, r) => s + (r.modelQty ?? 0), 0);
+  const rainTotal = rainSet
+    ? rainSet.recommendations.reduce((s, r) => s + (r.modelQty ?? 0), 0) : ruleTotal;
+  // Offered only when it would change a number.
+  const canApplyRain = !!rainSet && rainTotal < ruleTotal;
+  const rainApplied = applyWeather && canApplyRain;
+  const rainByItem = useMemo(
+    () => (rainSet ? new Map(rainSet.recommendations.map((r) => [r.itemId, r])) : null),
+    [rainSet],
+  );
+
+  // Anything else (snow): the day-level scaling below, as before.
   // `offered`, not `multiplier`: a measured-but-noisy estimate can still be
   // reached for by hand, which is what the operator asked for.
-  const offer = advice && advice.offered !== null ? advice : null;
+  const offer = advice && !rain && advice.offered !== null ? advice : null;
   // RE-CENTRED. The band ratio is measured against dry days; the suggestion
   // below is built from recent days, rain included.
   // Applying the raw ratio would charge for the rain twice -- and it would
   // also disagree with the home screen, which quotes the re-centred figure.
   const wxPlan = offer && weatherEffect
-    ? planFactor(offer.offered!, weatherEffect) : 1;
+    ? planFactor(offer.offered!, weatherEffect, isoWeekday(date)) : 1;
   const wxPct = Math.round((wxPlan - 1) * 1000) / 10;
   // Below half a percent there is nothing to apply and nothing to say.
   const canApplyWx = !!offer && Math.abs(wxPct) >= 0.5;
@@ -174,6 +207,8 @@ export function Production({
     }
     return out;
   }, [recByItem, wxFactor]);
+  // What every row, the totals and "use rule for all" read.
+  const activeRec = rainApplied && rainByItem ? rainByItem : scaledRec;
 
   const wdShort = weekdayName(date).slice(0, 3);
   const prevWd = record.prevDate ? weekdayName(record.prevDate).slice(0, 3) : null;
@@ -181,7 +216,7 @@ export function Production({
   const rows: RowSpec[] = items.map((item) => {
     // Scaled, never the operator's own number: the box keeps whatever they
     // put in it and only the suggestion beside it moves.
-    const rec = settings.showSuggestions ? scaledRec.get(item.itemId) : undefined;
+    const rec = settings.showSuggestions ? activeRec.get(item.itemId) : undefined;
     const d = rec ? delta(rec) : null;
     // Phase 5 requires the naive baseline to be visible on every line, so a
     // recommendation can always be compared against the dumbest alternative.
@@ -200,10 +235,12 @@ export function Production({
       worthExplaining && naive !== null && naive !== undefined ? `baseline ${naive}` : null,
     ].filter(Boolean);
     // The rule's own reason for disagreeing with the box, as the chance of the
-    // roll in dispute against what it needs. Left out once weather has scaled
-    // the suggestion: the chances describe the unscaled number.
-    const why = settings.showSuggestions && rec && wxFactor === 1
-      ? explainRoll(rec, qty[item.itemId] ?? 0) ?? undefined : undefined;
+    // roll in dispute against what it needs. With rain applied, the rain's
+    // reason instead ("rain 69%: a 4th would sell ~19%, needs 21%"), since the
+    // plain chances describe a dry day. Left out once snow has scaled it.
+    const why = !settings.showSuggestions || !rec ? undefined
+      : rainApplied ? rec.weatherNote
+      : wxFactor === 1 ? explainRoll(rec, qty[item.itemId] ?? 0) ?? undefined : undefined;
     return {
       item,
       value: qty[item.itemId] ?? 0,
@@ -230,7 +267,7 @@ export function Production({
   // What tapping "use the suggestion" would actually make: the rule's number
   // where it has one, your current number where it does not.
   const suggestedTotal = items.reduce((sum, item) => {
-    const rec = scaledRec.get(item.itemId);
+    const rec = activeRec.get(item.itemId);
     return sum + (rec?.modelQty ?? qty[item.itemId] ?? 0);
   }, 0);
   const suggestionDiffers = suggestedTotal !== total;
@@ -239,7 +276,7 @@ export function Production({
   function acceptAll() {
     const next: Record<number, number> = {};
     for (const item of items) {
-      const rec = scaledRec.get(item.itemId);
+      const rec = activeRec.get(item.itemId);
       next[item.itemId] = rec?.modelQty ?? qty[item.itemId] ?? 0;
     }
     setQty(next);
@@ -286,7 +323,7 @@ export function Production({
 
   const promo = settings.promoWeekdays.includes(isoWeekday(date));
   const changed = items.filter((i) => (qty[i.itemId] ?? 0)
-    !== (scaledRec.get(i.itemId)?.modelQty ?? qty[i.itemId] ?? 0)).length;
+    !== (activeRec.get(i.itemId)?.modelQty ?? qty[i.itemId] ?? 0)).length;
 
   return (
     <div>
@@ -306,9 +343,12 @@ export function Production({
         </details>
       )}
 
+      {alerts.length > 0 && <AlertBanner alerts={alerts} />}
+
       {advice && <WeatherAdvisory advice={advice} weather={weather}
-                                  pct={wxPct} canApply={canApplyWx}
+                                  pct={wxPct} canApply={rain ? canApplyRain : canApplyWx}
                                   applied={applyWeather}
+                                  ruleTotal={ruleTotal} rainTotal={rainTotal}
                                   onToggle={() => setApplyWeather((v) => !v)} />}
 
       <section className="totals" aria-label="Totals">
@@ -379,7 +419,7 @@ export function Production({
  * kiosk and their judgement, and the honest thing is to give them the number
  * AND its weakness rather than hiding one to protect them from the other.
  */
-function WeatherAdvisory({ advice, weather, pct, canApply, applied, onToggle }: {
+function WeatherAdvisory({ advice, weather, pct, canApply, applied, ruleTotal, rainTotal, onToggle }: {
   advice: NonNullable<ReturnType<typeof adviseFor>>;
   weather?: DayWeather;
   /** Re-centred against a TYPICAL day of this weekday, not a dry one --
@@ -387,9 +427,55 @@ function WeatherAdvisory({ advice, weather, pct, canApply, applied, onToggle }: 
   pct: number;
   canApply: boolean;
   applied: boolean;
+  /** The rule's total as it stands, and with the rain read in. */
+  ruleTotal: number;
+  rainTotal: number;
   onToggle: () => void;
 }) {
   const sky = weather ? describeWeather(weather) : "";
+
+  if (advice.rain) {
+    const r = advice.rain;
+    const days = weather ? `${weekdayName(weather.date)}s` : "days like this";
+    const chance = `${Math.round(r.chance * 100)}%`;
+    const effect = Math.round((1 - r.ratio) * 100);
+    return (
+      <div className={`banner wx-advice${applied ? " wx-applied" : ""}`}>
+        <Icon name={advice.endorsed && canApply ? "rain" : "clock"} size={16} className="ico" />
+        <div className="body">
+          {r.relative >= 1 ? (
+            <span>
+              <strong>Rain {chance} likely</strong>{sky ? ` (${sky})` : ""}. Rainy {days} here
+              have sold {effect < 0 ? `about ${-effect}% more than` : "about the same as"} dry
+              ones, so the suggestion stands — the app never adds rolls for weather.
+            </span>
+          ) : !r.credible ? (
+            <span>
+              <strong>Rain {chance} likely</strong>{sky ? ` (${sky})` : ""}. Rain hasn't clearly
+              changed {days} here yet — about {effect}% either way is within chance across {advice.n} of
+              them — so the suggestion stands.
+            </span>
+          ) : (
+            <span>
+              <strong>Rain {chance} likely</strong>{sky ? ` (${sky})` : ""}. Rainy {days} here
+              have sold <strong>about {effect}% less</strong> than dry ones, across {advice.n} of
+              them{advice.endorsed ? "" : " (about 90% sure it isn't chance)"}.
+              {canApply && <> Read into the rule, that is <strong>{rainTotal} rolls instead
+                of {ruleTotal}</strong>: no trial rolls, and each roll must still pay for
+                itself with fewer people in the store.</>}
+            </span>
+          )}
+          {canApply && (
+            <div className="wx-advice-actions">
+              <button className={applied ? "" : "small"} onClick={onToggle} aria-pressed={applied}>
+                {applied ? `Applied — ${rainTotal} rolls · undo` : `Make ${rainTotal} instead of ${ruleTotal}`}
+              </button>
+            </div>
+          )}
+        </div>
+      </div>
+    );
+  }
 
   let body: React.ReactNode;
   switch (advice.reason) {

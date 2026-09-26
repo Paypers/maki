@@ -12,7 +12,10 @@ import { DaySheet } from "./components/DaySheet";
 import { buildDayStats, emptyDay, type DayStatIndex } from "./lib/dayStats";
 import { economicsOf, estimateDay } from "./lib/money";
 import { checkAmbition } from "./lib/ambition";
+import { applyLook, lookOf } from "./lib/theme";
 import { planAhead, planDrift, type PlanContext } from "./lib/plan";
+import { adviseFor } from "./lib/weatherEffect";
+import { fetchAlerts, type WeatherAlert } from "./lib/weather";
 import { ComingUp } from "./screens/ComingUp";
 import { estimateWeatherEffect, scoreDaysForWeather, type WeatherEffect } from "./lib/weatherEffect";
 import { buildTodayOutlook } from "./lib/todayOutlook";
@@ -77,6 +80,8 @@ export default function App() {
   const [sheetDate, setSheetDate] = useState<BizDate | null>(null);
   const [weather, setWeather] = useState<Map<BizDate, DayWeather>>(new Map());
   const [weatherEffect, setWeatherEffect] = useState<WeatherEffect | null>(null);
+  /** The Weather Service's active alerts for the kiosk. Empty is normal. */
+  const [alerts, setAlerts] = useState<WeatherAlert[]>([]);
   const [online, setOnline] = useState(navigator.onLine);
   const [ready, setReady] = useState(false);
   const [updateReady, setUpdateReady] = useState(false);
@@ -214,13 +219,32 @@ export default function App() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [wxKey, today, stats.dates[0], refresh]);
 
-  // The theme is a data attribute on <html>, which is what the stylesheet's
-  // token blocks key on. "system" removes it so the media query decides.
+  // The Weather Service's warnings: on launch, when the connection comes
+  // back, and every half hour while the app is open -- a flood watch can be
+  // issued mid-morning. Never cached: an old warning is worse than none.
+  // Primitives only in the deps, for the same reason as above.
   useEffect(() => {
-    const t = settings?.theme ?? "system";
-    if (t === "system") delete document.documentElement.dataset.theme;
-    else document.documentElement.dataset.theme = t;
-  }, [settings?.theme]);
+    if (!wxKey || !loc || !online) { setAlerts([]); return; }
+    let live = true;
+    const pull = () => void fetchAlerts(loc)
+      .then((a) => { if (live) setAlerts(a); })
+      .catch(() => { /* keep what we had; the banner is a bonus, not a job */ });
+    pull();
+    const timer = window.setInterval(pull, 30 * 60 * 1000);
+    return () => { live = false; window.clearInterval(timer); };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [wxKey, online]);
+
+  // The look and light/dark are data attributes on <html>, which is what the
+  // stylesheet's token blocks key on. Not before Settings has loaded: until
+  // then index.html has already put last launch's choice on the page, and
+  // applying the defaults here would flash Default over it.
+  const look = settings?.look;
+  const brightness = settings?.theme;
+  useEffect(() => {
+    if (!look || !brightness) return;
+    applyLook(lookOf(look), brightness);
+  }, [look, brightness]);
 
   useEffect(() => {
     const on = () => { setOnline(true); void store.sync().then(refresh); };
@@ -263,12 +287,22 @@ export default function App() {
                     settings.showSuggestions]),
     JSON.stringify(templates), JSON.stringify(assignments),
     stats.dates.filter((d) => stats.byDate.get(d)?.phase === "outage").join(","),
+    // The forecast and the rain estimate, which the plan's rain totals read.
+    [...weather.values()].filter((w) => w.forecast && w.date >= today)
+      .map((w) => `${w.date}.${w.rainChance}.${w.precip}.${w.snow}`).join(","),
+    weatherEffect ? weatherEffect.rain.byWeekday.map((w) => w.ratio.toFixed(4)).join(",") : "",
   ].join("#") : ""), [settings, ready, today, observations, counted, items, templates,
-                       assignments, stats]);
+                       assignments, stats, weather, weatherEffect]);
   const planCtx = useMemo<PlanContext | null>(() => (settings && ready ? {
     items, observations, settings, counted,
     usual: (d: BizDate) => store.resolveTemplate(assignments, templates, isoWeekday(d), d),
     closed: new Set(stats.dates.filter((d) => stats.byDate.get(d)?.phase === "outage")),
+    weatherFor: (d: BizDate) => {
+      const w = weather.get(d);
+      if (!w || !w.forecast || !weatherEffect) return null;
+      const r = adviseFor(w, weatherEffect)?.rain;
+      return r && r.credible && r.relative < 1 ? { factor: r.relative, chance: r.chance, ratio: r.ratio } : null;
+    },
   } : null),
   // The key holds every input above; the objects themselves change identity
   // on every refresh whether or not anything in them did.
@@ -362,7 +396,7 @@ export default function App() {
                 outlook={buildTodayOutlook(today, stats, weather.get(today), weatherEffect)}
                 settings={settings} itemCount={items.length}
                 ambition={ambitionCheck}
-                plans={plans.slice(0, 7)} drift={drift}
+                plans={plans.slice(0, 7)} drift={drift} alerts={alerts}
                 onGo={goFromHome} onPickDay={setSheetDate} />
         )}
 
@@ -386,7 +420,7 @@ export default function App() {
           <Production key={view.date} date={view.date} items={items} templates={templates}
                       assignments={assignments} settings={settings} onDone={done}
                       weather={weather.get(view.date)} weatherEffect={weatherEffect}
-                      counted={counted}
+                      counted={counted} alerts={view.date === today ? alerts : []}
                       onEditTemplate={() => sub("templates", "setup")} />
         )}
 
@@ -450,6 +484,8 @@ export default function App() {
           econ={economicsOf(settings)}
           estimate={estimateDay(stats, today, sheetDate)}
           plan={planByDate.get(sheetDate) ?? null}
+          forecast={weather.get(sheetDate)}
+          weatherEffect={weatherEffect}
           drift={drift}
           suggestions={settings.showSuggestions}
           onOpenPlan={(d) => { setSheetDate(null); setView({ name: "plan", date: d }); }}

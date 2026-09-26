@@ -72,6 +72,14 @@ export interface DayWeather {
   /** True when this came from the forecast rather than the archive. */
   forecast: boolean;
   fetchedAt: string;
+  /**
+   * Forecasts only: the chance, 0-1, that it rains during opening hours --
+   * the highest hourly chance in the window. A forecast's rain AMOUNT is one
+   * model's single guess (two services put tomorrow at 0.06" and 0.4"); the
+   * chance is what the forecast is actually sure of, so it is what weights
+   * the rain effect. Absent on archived days, which either rained or didn't.
+   */
+  rainChance?: number;
 }
 
 /** Trading hours, local, 24h. Weather outside these is ignored. */
@@ -237,23 +245,27 @@ interface HourlySeries {
   snowfall: Array<number | null>;
   temperature_2m: Array<number | null>;
   weather_code: Array<number | null>;
+  /** Forecast only, percent. */
+  precipitation_probability?: Array<number | null>;
 }
 
 /**
  * Collapse hourly rows into one row per date, keeping only the hours the
  * kiosk is open. `close` is exclusive: an 8-20 day covers 08:00..19:59.
  */
-function reduceToDays(h: HourlySeries, hours: TradingHours,
-                      forecast: boolean): DayWeather[] {
+export function reduceToDays(h: HourlySeries, hours: TradingHours,
+                             forecast: boolean): DayWeather[] {
   const acc = new Map<BizDate, {
-    precip: number; snow: number; temps: number[]; codes: number[];
+    precip: number; snow: number; temps: number[]; codes: number[]; chance: number | null;
   }>();
   h.time.forEach((stamp, i) => {
     const [date, clock] = stamp.split("T");
     const hour = Number(clock.slice(0, 2));
     if (hour < hours.open || hour >= hours.close) return;
-    const row = acc.get(date) ?? { precip: 0, snow: 0, temps: [], codes: [] };
+    const row = acc.get(date) ?? { precip: 0, snow: 0, temps: [], codes: [], chance: null };
     row.precip += h.precipitation?.[i] ?? 0;
+    const pop = h.precipitation_probability?.[i];
+    if (pop !== null && pop !== undefined) row.chance = Math.max(row.chance ?? 0, pop);
     row.snow += h.snowfall?.[i] ?? 0;
     const t = h.temperature_2m?.[i];
     if (t !== null && t !== undefined) row.temps.push(t);
@@ -276,13 +288,15 @@ function reduceToDays(h: HourlySeries, hours: TradingHours,
       code: Math.max(...r.codes, 0),
       forecast,
       fetchedAt: now,
+      ...(forecast && r.chance !== null
+        ? { rainChance: Math.round(Math.min(100, Math.max(0, r.chance))) / 100 } : {}),
     }))
     .sort((a, b) => (a.date < b.date ? -1 : 1));
 }
 
-const common = (loc: StoreLocation) =>
+const common = (loc: StoreLocation, extra = "") =>
   `latitude=${loc.latitude}&longitude=${loc.longitude}` +
-  `&hourly=temperature_2m,precipitation,snowfall,weather_code` +
+  `&hourly=temperature_2m,precipitation,snowfall,weather_code${extra}` +
   `&temperature_unit=fahrenheit&precipitation_unit=inch` +
   `&timezone=${encodeURIComponent(loc.timezone)}`;
 
@@ -305,6 +319,71 @@ export async function fetchForecast(
   pastDays = 7, forecastDays = 3,
 ): Promise<DayWeather[]> {
   const body = await getJSON(
-    `${FORECAST}?${common(loc)}&past_days=${pastDays}&forecast_days=${forecastDays}`);
+    `${FORECAST}?${common(loc, ",precipitation_probability")}` +
+    `&past_days=${pastDays}&forecast_days=${forecastDays}`);
   return reduceToDays(body.hourly as unknown as HourlySeries, hours, true);
+}
+
+// ----------------------------------------------------------------- alerts ---
+
+/**
+ * The National Weather Service's active alerts for the kiosk's spot: flood
+ * watches, wind advisories, winter storm and tropical storm warnings.
+ *
+ * Why these matter separately from the rain effect: the effect is measured on
+ * this kiosk's own days, and a named storm or a flood warning is, by
+ * definition, a day the record has almost never seen. Nothing honest can put
+ * a percentage on it from a summer of data. What the app CAN do is make sure
+ * it is never missed -- the warning is shown where the plan is made, in the
+ * Weather Service's own words -- and leave the size of the cut to the person
+ * who can see the sky.
+ *
+ * api.weather.gov: US government, public domain, no key, open to browsers.
+ */
+const NWS_ALERTS = "https://api.weather.gov/alerts/active";
+
+export interface WeatherAlert {
+  /** "Flood Watch", "Wind Advisory", "Tropical Storm Warning". */
+  event: string;
+  /** Extreme | Severe | Moderate | Minor | Unknown, as the NWS grades it. */
+  severity: string;
+  headline: string;
+  /** When it starts and ends, ISO. `ends` falls back to when it expires. */
+  onset: string | null;
+  ends: string | null;
+}
+
+/** Pure: the alert list out of an api.weather.gov GeoJSON response. */
+export function parseAlerts(body: unknown): WeatherAlert[] {
+  const features = (body as { features?: unknown[] } | null)?.features;
+  if (!Array.isArray(features)) return [];
+  const out: WeatherAlert[] = [];
+  for (const f of features) {
+    const p = (f as { properties?: Record<string, unknown> })?.properties;
+    if (!p || typeof p.event !== "string") continue;
+    // Tests and exercises are sent through the same feed.
+    if (p.status && p.status !== "Actual") continue;
+    const str = (v: unknown) => (typeof v === "string" && v ? v : null);
+    out.push({
+      event: p.event,
+      severity: str(p.severity) ?? "Unknown",
+      headline: str(p.headline) ?? p.event,
+      onset: str(p.onset) ?? str(p.effective),
+      ends: str(p.ends) ?? str(p.expires),
+    });
+  }
+  // Most serious first; the same event twice (overlapping zones) once.
+  const rank = (s: string) => ["Extreme", "Severe", "Moderate", "Minor"].indexOf(s);
+  const seen = new Set<string>();
+  return out
+    .sort((a, b) => (rank(a.severity) < 0 ? 9 : rank(a.severity)) - (rank(b.severity) < 0 ? 9 : rank(b.severity)))
+    .filter((a) => (seen.has(a.event) ? false : (seen.add(a.event), true)));
+}
+
+/** Active alerts for the kiosk. An empty list is the normal answer. */
+export async function fetchAlerts(loc: StoreLocation): Promise<WeatherAlert[]> {
+  const res = await fetch(`${NWS_ALERTS}?point=${loc.latitude.toFixed(4)},${loc.longitude.toFixed(4)}`,
+                          { headers: { Accept: "application/geo+json" } });
+  if (!res.ok) throw new Error(`weather service returned ${res.status}`);
+  return parseAlerts(await res.json());
 }

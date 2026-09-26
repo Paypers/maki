@@ -438,6 +438,36 @@ the existing `(source_ref, value_hash)` constraint dedupes replays for free.
 Templates are what make the form usable in under a minute — thirty items typed
 is three minutes, four corrected is one.
 
+**Weather.** Set a ZIP in Setup → Weather and the app measures what rain has
+done to *this* kiosk: each rainy day (≥ 0.05" during opening hours) against
+dry days of the same weekday, per weekday, shrunk toward the all-days mean by
+how thin each weekday's sample is (`web/src/lib/weatherEffect.ts`). On the
+record to Sep 21 only **Saturday** is affected: rainy Saturdays sold about
+9–14% less after shrinking (17–22% raw; weekdays ≈ 0; Sundays, if anything,
+sold more). A forecast is read by its **chance** of rain, not its amount — two
+services put the same Saturday at 0.06" and 0.4". On the day, Make offers the
+rain read into the rule itself: each item's demand thinned for the customers
+rain keeps home (binomial thinning of its sell-chance ladder), no trial rolls
+when rain is more likely than not — and only where the weekday's effect is at
+least 90% credible. A walk-forward backtest (effect re-estimated each day from
+the days before it, forecasts right 70% of the time, false alarms counted)
+chose that bar: without it the cuts on Sundays and weekdays gave back what
+Saturdays earned. It is worth a few dollars on a rainy Saturday, not more.
+Weather Service alerts (flood watches, storm warnings) show on Today and Make
+in the Service's own words; the record has no days like them, so the app puts
+no number on them.
+
+**Themes.** Three looks — Default, Washi (paper and ink, serif numbers, square
+inked edges) and Bento (soft lifted tiles, a dark card for the week) — each in
+light and dark, picked in Setup → Theme. A look changes colour, type, corners
+and depth, never layout, and never what a colour means: every look has its own
+amber for owed, blue for the rule, green for saved and red for late, and every
+text/ground pair clears 4.5:1 (`web/src/lib/theme.test.ts`). The choice is a
+property of the phone, like light/dark: kept in Settings, never synced, and
+mirrored to localStorage so `index.html` paints the right look before the app
+loads. All faces are self-hosted Latin subsets cached by the service worker,
+so switching works offline.
+
 **Scheduling.** `tools/jobs.py`, driven by GitHub Actions cron. Ordering is
 deliberate: ingest → score → **sheet last**, with `if: always()` throughout, so
 no upstream failure can deny the operator a sheet.
@@ -560,7 +590,7 @@ npm run wx:verify                           # the import, and that the sync sett
 npm run wx:shots                            # the weather card, light and dark
 ```
 
-Tests: `python -m pytest tests/ -q` (**236**) and `cd web && npm test` (**216**).
+Tests: `python -m pytest tests/ -q` (**236**) and `cd web && npm test` (**241**).
 
 The operator's real workbook and all extracted data stay out of version control;
 `tests/fixtures/fixture.xlsx` is a committed, anonymised stand-in that reproduces

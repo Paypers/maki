@@ -22,8 +22,13 @@
  */
 const BUILD = "__BUILD__";
 const CACHE = `kiosk-${BUILD}`;
+// The looks' faces too, so a theme can be switched to with no signal.
 const SHELL = ["/", "/index.html", "/manifest.webmanifest",
-               "/fonts/space-grotesk-latin.woff2", "/fonts/manrope-latin.woff2"];
+               "/fonts/space-grotesk-latin.woff2", "/fonts/manrope-latin.woff2",
+               "/fonts/shippori-mincho-500-latin.woff2", "/fonts/shippori-mincho-700-latin.woff2",
+               "/fonts/shippori-mincho-800-latin.woff2", "/fonts/zen-kaku-gothic-new-400-latin.woff2",
+               "/fonts/zen-kaku-gothic-new-500-latin.woff2", "/fonts/zen-kaku-gothic-new-700-latin.woff2",
+               "/fonts/sora-latin.woff2"];
 
 self.addEventListener("install", (event) => {
   // No skipWaiting here. The new worker waits until the page asks for it, so

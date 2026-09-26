@@ -287,11 +287,12 @@ async function apply(kind: string, payload: unknown,
       await store.saveRecipe(payload as never, { queue: false });
       return 1;
     case "settings": {
-      // `theme` stays whatever this device has -- it is never sent, and must
-      // not be clobbered by a pull from a device that prefers the other one.
+      // `theme` and `look` stay whatever this device has -- they are never
+      // sent, and must not be clobbered by a pull from a device that prefers
+      // another (or by an older one that still sent them).
       const current = await store.getSettings();
       await store.saveSettings(
-        { ...current, ...(payload as object), theme: current.theme } as never,
+        { ...current, ...(payload as object), theme: current.theme, look: current.look } as never,
         { queue: false });
       return 1;
     }

@@ -76,10 +76,13 @@ function rangeLabel(from: string, to: string): string {
 /**
  * A week or a month: counted so far, plus what the rest should bring.
  */
-export function PeriodCard({ title, p, keepShare, showRange = true }: {
+export function PeriodCard({ title, p, keepShare, showRange = true, hero = false }: {
   title: string; p: PeriodProjection; keepShare: number;
   /** Off for a month, whose name already says its range. */
   showRange?: boolean;
+  /** The one card a screen is about. Plain in Default; the dark card in Washi
+   *  and Bento (styles.css, section 16). */
+  hero?: boolean;
 }) {
   const days = Math.round((new Date(`${p.to}T12:00:00`).getTime()
     - new Date(`${p.from}T12:00:00`).getTime()) / 86_400_000) + 1;
@@ -92,7 +95,7 @@ export function PeriodCard({ title, p, keepShare, showRange = true }: {
   const finished = estimated === 0;
 
   return (
-    <section className="card period" aria-label={title}>
+    <section className={`card period${hero ? " hero" : ""}`} aria-label={title}>
       <div className="head-row">
         <div className="eyebrow">{title}{showRange ? ` · ${rangeLabel(p.from, p.to)}` : ""}</div>
         <span className="hint-inline nowrap">{p.countedDays} of {days} counted</span>

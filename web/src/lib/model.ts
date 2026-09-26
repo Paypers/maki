@@ -26,6 +26,10 @@
  * `model.test.ts` replays the Python-generated cases in
  * `fixtures/roll_chance_cases.json` through this file.
  *
+ * WEATHER is the one app-only part: asked for with `weather`, the rule reads
+ * each item's demand as rain would thin it (see `thinnedChance`). Without it
+ * the rule is exactly the Python one.
+ *
  * Measured on Jun 5 - Sep 21 after the middle man's 20% (tools/compare_rules.py):
  * about level with the operator's own numbers on profit, and $6-10 a day ahead
  * of the old same-weekday quantile, which read every sell-out as the most that
@@ -501,6 +505,76 @@ function describe(recent: DayObservation[], lad: Ladder, fallback: boolean,
   return { reason: `${ordinal(q)} ~${at(q)}, ${ordinal(q + 1)} ~${at(q + 1)} · ${needs}` };
 }
 
+// ------------------------------------------------------------- weather --
+
+/**
+ * Rain, applied inside the rule rather than on top of it.
+ *
+ * Rain keeps some customers home. If each would-be customer still comes with
+ * probability f, a day that would have sold d rolls sells Binomial(d, f) --
+ * "thinning", the standard model for a share of arrivals dropping out. On an
+ * item's own ladder the chance that roll k sells becomes
+ *
+ *   S_f(k) = sum over d >= k of P(D = d) * P(Binomial(d, f) >= k),
+ *   P(D = d) = S(d) - S(d + 1),
+ *
+ * and, since rain is a chance and not a certainty, the rule reads
+ *
+ *   chance * S_f(k) + (1 - chance) * S(k)
+ *
+ * and makes roll k only while that still clears break-even. The same per-roll
+ * newsvendor as always, on the demand the day is expected to bring: a roll
+ * that was only just worth it drops out, one that sells nearly every day
+ * stays. A flat "-14% on the total" cannot tell those two apart.
+ *
+ * Past the ladder the chances continue at the prior (`chanceOf`), and the
+ * tail beyond a dozen further rolls is lumped into the last -- at the chances
+ * involved it moves nothing.
+ */
+export function thinnedChance(chances: readonly number[], f: number, k: number): number {
+  if (k <= 0) return 1;
+  if (!chances.length) return 0;
+  if (f >= 1) return chanceOf(chances, k);
+  const top = chances.length + 12;
+  const surv = (d: number) => (d <= 0 ? 1 : chanceOf(chances, d));
+  let total = 0;
+  for (let d = k; d <= top; d++) {
+    const mass = d < top ? surv(d) - surv(d + 1) : surv(d);
+    if (mass <= 0) continue;
+    let tail = 0;   // P(Binomial(d, f) >= k)
+    for (let j = k; j <= d; j++) tail += comb(d, j) * f ** j * (1 - f) ** (d - j);
+    total += mass * tail;
+  }
+  return total;
+}
+
+/**
+ * Rain at least this likely, on a weekday rain lowers, and there are no trial
+ * rolls. They are bets that demand runs HIGH -- the climber's extras, a test
+ * roll above the most made lately -- and a day more likely than not to be
+ * below normal is the wrong day to place them. It is also the day most likely
+ * to teach the climber the wrong lesson about the item.
+ */
+export const NO_TRIALS_CHANCE = 0.5;
+
+/**
+ * An item's base quantity on a rainy day: the rolls whose mixed chance still
+ * clears break-even, never more than without rain, and never below the one
+ * roll an item on the menu is always given.
+ */
+function rainyBase(lad: Ladder, base: number, wx: { factor: number; chance: number },
+                   trialsOff: boolean): { q: number; next: number } {
+  // A roll above the most made lately is a test -- a trial, like the
+  // climber's, and off on the same days.
+  const cap = trialsOff ? Math.max(Math.min(base, lad.recentMax), Math.min(base, FLOOR)) : base;
+  const mixed = (k: number) =>
+    wx.chance * thinnedChance(lad.chances, wx.factor, k) + (1 - wx.chance) * chanceOf(lad.chances, k);
+  let q = 0;
+  while (q < cap && mixed(q + 1) >= lad.breakEven!) q += 1;
+  if (q < FLOOR && base >= FLOOR) q = FLOOR;
+  return { q, next: mixed(q + 1) };
+}
+
 export interface RecommendationSet {
   date: BizDate;
   recommendations: Recommendation[];
@@ -524,6 +598,13 @@ export interface RecommendOptions extends RatioOptions {
   counted?: ReadonlySet<BizDate>;
   /** 1 (careful: never climbs) to 5 (max). */
   ambition?: number;
+  /**
+   * Rain expected on the day, as the weather estimate reads it: if it rains,
+   * each customer the plan's usual days would bring still comes with
+   * probability `factor`; it rains with probability `chance`. Only ever
+   * lowers a number. See `thinnedChance`.
+   */
+  weather?: { factor: number; chance: number };
 }
 
 export function recommendFor(
@@ -581,6 +662,15 @@ export function recommendFromObservations(
   const allowed = applyBudget(ladders, ambition);
   let climbingRolls = 0, climbingItems = 0;
 
+  // Rain: only ever downward. A weekday where rain has sold MORE is left as
+  // it is -- that evidence is thinner, and guessing high is the expensive way
+  // to be wrong. And no trial rolls when rain is more likely than not (see
+  // NO_TRIALS_CHANCE).
+  const wx = ratio.weather && ratio.weather.factor < 1 && ratio.weather.chance > 0
+    ? ratio.weather : null;
+  const trialsOff = !!wx && wx.chance >= NO_TRIALS_CHANCE;
+  let rainCut = 0;
+
   items.forEach((item, idx) => {
     const all = byItem.get(item.itemId) ?? [];
     const recent = all.slice(-RECENT);
@@ -588,8 +678,24 @@ export function recommendFromObservations(
     const selloutRate = recent.length
       ? recent.filter((o) => o.censored).length / recent.length : 0;
     const lad = ladders[idx].lad;
-    const climbSteps = allowed.get(item.itemKey) ?? 0;
-    const quantity = lad.base === null ? null : lad.base + climbSteps;
+    let climbSteps = allowed.get(item.itemKey) ?? 0;
+    let base = lad.base;
+    let weatherCut = 0;
+    let weatherNote: string | undefined;
+    if (wx && base !== null && lad.breakEven !== null) {
+      const before = base + climbSteps;
+      if (trialsOff) climbSteps = 0;
+      const r = rainyBase(lad, base, wx, trialsOff);
+      base = r.q;
+      weatherCut = before - (base + climbSteps);
+      if (weatherCut > 0) {
+        weatherNote = r.q < lad.base!
+          ? `rain ${pct(wx.chance)}: a ${ordinal(r.q + 1)} would sell ~${pct(r.next)} · needs ${pct(lad.breakEven)}`
+          : `rain ${pct(wx.chance)}: no trial roll today`;
+        rainCut += weatherCut;
+      }
+    }
+    const quantity = base === null ? null : base + climbSteps;
     if (climbSteps > 0) { climbingRolls += climbSteps; climbingItems += 1; }
 
     // The naive same-weekday mean, kept visible beside every suggestion so a
@@ -612,7 +718,7 @@ export function recommendFromObservations(
       modelQty: quantity,
       naiveBaselineQty: baselineQty,
       modelName: MODEL_NAME,
-      modelVersion: `${MODEL_VERSION}-a${ambition}`,
+      modelVersion: `${MODEL_VERSION}-a${ambition}${wx ? "-wx" : ""}`,
       isFallback: fallback,
       fallbackReason: fallback ? caveat : undefined,
       reason,
@@ -625,10 +731,18 @@ export function recommendFromObservations(
       ruleQty: lad.base,
       climb: lad.climb,
       climbSteps,
+      ...(wx ? { weatherCut, weatherNote } : {}),
     });
   });
 
   const notes: string[] = [];
+  if (wx) {
+    notes.push(
+      `Rain ${pct(wx.chance)} likely: each roll's chance of selling is lowered for the ` +
+      `customers rain keeps home${trialsOff ? ", and there are no trial rolls today" : ""}` +
+      ` — ${rainCut} roll${rainCut === 1 ? "" : "s"} fewer.`,
+    );
+  }
   if (climbingRolls > 0) {
     notes.push(
       `Ambition ${AMBITION_NAMES[ambition].toLowerCase()}: trying ${climbingRolls} extra ` +

@@ -135,22 +135,24 @@ export function buildTodayOutlook(
   const advice = adviseFor(weather, effect);
   if (!advice) return flat;
 
-  // The band's ratio against a dry day of the same weekday. Dry is 1 by
-  // construction; a band that has never been measured has none at all.
-  const vsDry = advice.band === "dry" ? 1 : advice.offered;
+  // Against a dry day of the same weekday: the rain for this weekday,
+  // weighted by the forecast's chance of it, when there is one; otherwise
+  // the band's ratio, where dry is 1 by construction.
+  const rainy = !!advice.rain;
+  const vsDry = rainy ? advice.offered : advice.band === "dry" ? 1 : advice.offered;
   if (vsDry === null
       || advice.reason === "out-of-range" || advice.reason === "no-data") {
     return { ...flat, reason: advice.reason, weatherDays: advice.n };
   }
 
-  const relative = planFactor(vsDry, effect);
+  const relative = planFactor(vsDry, effect, isoWeekday(today));
 
   // A dry day's uplift is borrowed from the wet estimate, so it cannot be
   // more certain than the estimate it came from.
   const anyUsable = effect.byBand.some((b) => b.usable);
   const anyMeasured = effect.byBand.some((b) => b.n >= MIN_BAND_DAYS);
   const confidence: OutlookConfidence =
-    advice.band === "dry"
+    advice.band === "dry" && !rainy
       ? (anyUsable ? "measured" : anyMeasured ? "weak" : "none")
       : (advice.endorsed ? "measured" : advice.reason === "too-noisy" ? "weak" : "none");
 
@@ -163,6 +165,6 @@ export function buildTodayOutlook(
     reason: advice.reason,
     // A dry day is being compared against every day on record, so the count
     // that supports it is the dry sample, not the (empty) band sample.
-    weatherDays: advice.band === "dry" ? effect.dryDays : advice.n,
+    weatherDays: advice.band === "dry" && !rainy ? effect.dryDays : advice.n,
   };
 }

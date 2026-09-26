@@ -26,10 +26,53 @@
  *    any weather effect TOWARD ZERO -- a rainy day that still sold out looks
  *    like no effect. So a measured effect here is a floor on the real one,
  *    and `censoredShare` is reported alongside it rather than buried.
+ *
+ * 4. RAIN BY WEEKDAY, SHRUNK. Pooling every weekday into one rain effect hid
+ *    the finding that mattered (the record to Sep 21): rain cost Saturdays
+ *    about a fifth of their sales, seven rainy Saturdays out of seven, while
+ *    rainy Sundays sold MORE and the weekdays moved a few percent. Averaged
+ *    together that read "-4%" for every day -- wrong on Saturday by five
+ *    times and wrong on Sunday in sign. The weekdays really do differ
+ *    (Cochran's Q = 12.5 on 6 df), so each gets its own estimate -- but seven
+ *    days is a small sample, so each is pulled toward the all-days mean by
+ *    exactly as much as its own noise warrants against the measured spread
+ *    between weekdays (DerSimonian & Laird's random effects, 1986), with the
+ *    day-to-day scatter pooled across weekdays. A weekday with three rainy
+ *    days and a wild number is pulled almost all the way in.
+ *
+ *    How firm is Saturday's? Its RAW drop is: -17% to -22%, whether rain is
+ *    measured at the ZIP's centre or 3 km east, and whether or not the
+ *    too-close-to-call days (0.02-0.10") are left out. How much of it is
+ *    Saturday rather than chance is not: shrunk, it lands anywhere from -3%
+ *    to -14%, because a few light-shower days flip between "wet" and "dry"
+ *    with the exact spot, and seven weekdays is a thin basis for the spread.
+ *    So the app shows the shrunk figure, says when it could still be chance,
+ *    and leaves applying it to the operator.
+ *
+ *    Cross-checked with a stronger design (Sep 26 audit): log sales on
+ *    weekday AND week fixed effects, so each rainy day is compared with the
+ *    dry days of its own week, clustered by week. Weekdays: rain ~0% (+-9).
+ *    Saturday: -16% to -24% raw. A permutation test shuffling rain within
+ *    weekday put the Saturday difference at p = 0.007; rain moved a week
+ *    later (placebo) showed nothing; the amount made did not move with rain,
+ *    so it is demand, not supply. Hierarchical Bayes with the spread
+ *    integrated rather than plugged in: Saturday -9% to -13%, 90% interval
+ *    reaching -24%. Predicting each rainy Saturday from the rest, this
+ *    estimate cut the error by 37% against ignoring rain; one pooled rain
+ *    effect for all days cut it by 5%.
+ *
+ *    Rain is ONE band here, wet and heavy together: the record shows no dose
+ *    response -- heavy days (0.4"+) sold no less than light ones, and short
+ *    showers cost as much as all-day rain -- so splitting them would fit
+ *    noise. The band split stays for the display.
+ *
+ * 5. A LOCAL BASELINE. Each wet day is compared to dry days of its weekday
+ *    within four weeks either side, not the whole summer's, so a season that
+ *    drifts (a busy May, a quiet July) is not read as weather.
  */
 
 import type { BizDate } from "./businessDay";
-import { isoWeekday } from "./businessDay";
+import { daysBetween, isoWeekday } from "./businessDay";
 import type { DayWeather, WeatherBand } from "./weather";
 import { band } from "./weather";
 
@@ -62,6 +105,35 @@ export interface BandEffect {
   usable: boolean;
 }
 
+/** Rain on one weekday: its own measurement, and what survives shrinking. */
+export interface WeekdayRain {
+  weekday: number;
+  /** Rainy days of this weekday with a dry baseline to compare against. */
+  n: number;
+  /** Their own mean ratio to dry, before shrinking. NaN with no days. */
+  raw: number;
+  /** The estimate to use: shrunk toward the all-days mean. 0.8 = 20% less. */
+  ratio: number;
+  /** Its standard error, after shrinking. */
+  se: number;
+  /** Share of this weekday's matched days that were rainy. */
+  rainShare: number;
+}
+
+/** Rain, one band, by weekday -- see decision 4 above. */
+export interface RainModel {
+  /** Rainy days with a baseline, all weekdays. */
+  n: number;
+  /** The all-days (random-effects) mean ratio. */
+  pooled: number;
+  /** How much weekdays really differ, in ratio units (0.10 = 10 points). */
+  tau: number;
+  /** Seven entries, Monday first. */
+  byWeekday: WeekdayRain[];
+  /** Enough rainy days for any of it to be offered. */
+  usable: boolean;
+}
+
 export interface WeatherEffect {
   /** Days with both a sale record and weather. */
   matched: number;
@@ -75,12 +147,26 @@ export interface WeatherEffect {
   tempRange: [number, number] | null;
   /** True when there is not enough to say anything at all. */
   insufficient: boolean;
+  rain: RainModel;
 }
 
 /** Below this many days in a band, no estimate is offered at all. */
 export const MIN_BAND_DAYS = 8;
 /** And below this t, the estimate is shown but marked as not yet actionable. */
 export const MIN_T = 2;
+/**
+ * The bar for a weekday's rain effect to change the plan at all: 90% sure it
+ * is not chance (one-sided). Chosen by a walk-forward backtest over Jul-Sep
+ * with the effect re-estimated each day from the days before it only, the
+ * rule's plan scored against what actually sold, forecasts right 70% of the
+ * time with false alarms on dry days counted too. Net profit, at the two rain
+ * measurement points: no bar -$9 / -$1; this bar +$22 / +$6; the 2-SE bar
+ * +$12 / -$14. Without a bar the app cut Sundays (which sell MORE in rain) and
+ * weekdays (where rain does nothing measurable) and gave back what Saturdays
+ * earned. The sums are small -- a few dollars a week -- and say so honestly:
+ * rain is a real effect on Saturday sales and a modest one on profit.
+ */
+export const CREDIBLE_Z = 1.2816;
 
 function mean(v: number[]): number {
   return v.length ? v.reduce((a, b) => a + b, 0) / v.length : NaN;
@@ -92,6 +178,119 @@ function variance(v: number[]): number {
   return v.reduce((a, b) => a + (b - m) ** 2, 0) / (v.length - 1);
 }
 
+/** Dry days of the same weekday within this many days count as its baseline. */
+export const BASELINE_SPAN_DAYS = 28;
+
+/**
+ * The dry baseline for a day: the mean of dry days of its weekday within four
+ * weeks either side, or of every dry day of that weekday when fewer than two
+ * are near. Null when there are not two to average at all.
+ */
+function baselineOf(usable: ScoredDay[]): (d: ScoredDay) => number | null {
+  const dry = new Map<number, ScoredDay[]>();
+  for (const d of usable) {
+    if (band(d.weather) !== "dry") continue;
+    const wd = isoWeekday(d.date);
+    dry.set(wd, [...(dry.get(wd) ?? []), d]);
+  }
+  return (d) => {
+    const same = (dry.get(isoWeekday(d.date)) ?? []).filter((x) => x.date !== d.date);
+    const near = same.filter((x) => Math.abs(daysBetween(x.date, d.date)) <= BASELINE_SPAN_DAYS);
+    const pick = near.length >= 2 ? near : same;
+    if (pick.length < 2) return null;
+    const m = mean(pick.map((x) => x.sold));
+    return m > 0 ? m : null;
+  };
+}
+
+const isRain = (w: DayWeather) => {
+  const b = band(w);
+  return b === "wet" || b === "heavy";
+};
+
+/**
+ * Rain by weekday, each weekday's mean ratio shrunk toward the all-days mean.
+ *
+ *   per weekday   r_w = mean ratio, v_w = its variance (s^2 / n)
+ *   spread        tau^2, DerSimonian-Laird: how much more the weekdays differ
+ *                 than their own noise explains (zero when they don't)
+ *   all days      mu = sum r_w/(v_w+tau^2) / sum 1/(v_w+tau^2)
+ *   shrunk        (r_w/v_w + mu/tau^2) / (1/v_w + 1/tau^2)
+ *
+ * With no real spread every weekday gets the all-days mean; with a lot, each
+ * keeps its own. v_w uses the day-to-day scatter pooled over all weekdays
+ * (see below). A weekday with no rainy days gets the all-days mean, as
+ * uncertain as the spread between weekdays says.
+ */
+function estimateRain(usable: ScoredDay[], baseline: (d: ScoredDay) => number | null): RainModel {
+  const ratios = new Map<number, number[]>();
+  const seen = new Map<number, { all: number; rainy: number }>();
+  for (const d of usable) {
+    const wd = isoWeekday(d.date);
+    const c = seen.get(wd) ?? { all: 0, rainy: 0 };
+    c.all += 1;
+    if (isRain(d.weather) && d.weather.snow < 0.1) {
+      c.rainy += 1;
+      const b = baseline(d);
+      if (b) ratios.set(wd, [...(ratios.get(wd) ?? []), d.sold / b]);
+    }
+    seen.set(wd, c);
+  }
+  // How much one rainy day scatters around its weekday's mean, pooled over
+  // every weekday: sum (n_w - 1) s_w^2 / sum (n_w - 1). Pooled, not each
+  // weekday's own: with three or four rainy days a weekday's own spread is
+  // itself a wild guess, and a small one by chance hands that weekday a huge
+  // weight. Measured on pure noise (seven weekdays, three to eight rainy days
+  // each), own spreads made some weekday "stand out" in 28% of runs; pooled,
+  // 4.5% -- the 5% the 2-standard-error bar is meant to allow.
+  const all = [...ratios.values()].flat();
+  const n = all.length;
+  let dof = 0, ss = 0;
+  for (const v of ratios.values()) {
+    if (v.length < 2) continue;
+    dof += v.length - 1;
+    ss += (v.length - 1) * variance(v);
+  }
+  const s2 = dof > 0 ? ss / dof : variance(all);
+  // A floor of one point squared: nothing here is infinitely certain.
+  const groups = [...ratios.entries()]
+    .map(([wd, v]) => ({ wd, n: v.length, m: mean(v), v: Math.max(s2 / v.length, 1e-4) }));
+
+  let tau2 = 0;
+  let mu = n ? mean(all) : 1;
+  let seMu = n > 1 ? Math.sqrt(Math.max(variance(all) / n, 1e-4)) : 1;
+  if (groups.length >= 2) {
+    const w = groups.map((g) => 1 / g.v);
+    const W = w.reduce((a, b) => a + b, 0);
+    const fixed = groups.reduce((a, g, i) => a + w[i] * g.m, 0) / W;
+    const q = groups.reduce((a, g, i) => a + w[i] * (g.m - fixed) ** 2, 0);
+    const c = W - w.reduce((a, b) => a + b * b, 0) / W;
+    tau2 = c > 0 ? Math.max(0, (q - (groups.length - 1)) / c) : 0;
+    const ws = groups.map((g) => 1 / (g.v + tau2));
+    const Ws = ws.reduce((a, b) => a + b, 0);
+    mu = groups.reduce((a, g, i) => a + ws[i] * g.m, 0) / Ws;
+    seMu = Math.sqrt(1 / Ws);
+  } else if (groups.length === 1) {
+    mu = groups[0].m;
+    seMu = Math.sqrt(groups[0].v);
+  }
+
+  const byWeekday: WeekdayRain[] = [1, 2, 3, 4, 5, 6, 7].map((wd) => {
+    const own = ratios.get(wd) ?? [];
+    const g = groups.find((x) => x.wd === wd);
+    const c = seen.get(wd);
+    const rainShare = c && c.all ? c.rainy / c.all : 0;
+    if (g && tau2 > 0) {
+      const precision = 1 / g.v + 1 / tau2;
+      return { weekday: wd, n: g.n, raw: g.m, rainShare,
+               ratio: (g.m / g.v + mu / tau2) / precision, se: Math.sqrt(1 / precision) };
+    }
+    return { weekday: wd, n: own.length, raw: own.length ? mean(own) : NaN, rainShare,
+             ratio: mu, se: Math.sqrt(seMu ** 2 + tau2) };
+  });
+  return { n, pooled: mu, tau: Math.sqrt(tau2), byWeekday, usable: n >= MIN_BAND_DAYS };
+}
+
 export function estimateWeatherEffect(days: ScoredDay[]): WeatherEffect {
   const usable = days.filter((d) => !d.excluded && d.sold > 0);
   const excluded = days.filter((d) => d.excluded).length;
@@ -100,13 +299,9 @@ export function estimateWeatherEffect(days: ScoredDay[]): WeatherEffect {
   const tempRange: [number, number] | null =
     temps.length ? [Math.min(...temps), Math.max(...temps)] : null;
 
-  // The dry baseline, per weekday. Everything is expressed relative to this.
-  const dryByWeekday = new Map<number, number[]>();
-  for (const d of usable) {
-    if (band(d.weather) !== "dry") continue;
-    const wd = isoWeekday(d.date);
-    dryByWeekday.set(wd, [...(dryByWeekday.get(wd) ?? []), d.sold]);
-  }
+  // The dry baseline, per weekday and nearby in time. Everything is
+  // expressed relative to this.
+  const baseline = baselineOf(usable);
 
   const byBand: BandEffect[] = [];
   for (const b of ["wet", "heavy", "snow"] as WeatherBand[]) {
@@ -116,15 +311,12 @@ export function estimateWeatherEffect(days: ScoredDay[]): WeatherEffect {
     const weekdays = new Set<number>();
     for (const d of usable) {
       if (band(d.weather) !== b) continue;
-      const wd = isoWeekday(d.date);
-      const dry = dryByWeekday.get(wd);
-      // Two dry days is not a baseline; a weekday without one contributes
-      // nothing rather than being compared to the overall mean.
-      if (!dry || dry.length < 2) continue;
-      const base = mean(dry);
-      if (!(base > 0)) continue;
+      // Fewer than two dry days is not a baseline; a weekday without one
+      // contributes nothing rather than being compared to the overall mean.
+      const base = baseline(d);
+      if (base === null) continue;
       ratios.push(d.sold / base);
-      weekdays.add(wd);
+      weekdays.add(isoWeekday(d.date));
     }
     const n = ratios.length;
     const ratio = n ? mean(ratios) : NaN;
@@ -150,6 +342,7 @@ export function estimateWeatherEffect(days: ScoredDay[]): WeatherEffect {
     // Nothing can be said without a dry baseline to say it against.
     insufficient: dryDays < MIN_BAND_DAYS
       || byBand.every((e) => e.n < MIN_BAND_DAYS),
+    rain: estimateRain(usable, baseline),
   };
 }
 
@@ -192,6 +385,19 @@ export interface WeatherAdvice {
   n: number;
   /** The observed temperature range, when the reason is out-of-range. */
   tempRange: [number, number] | null;
+  /**
+   * Rain, when there is a chance of it and the record can speak to it.
+   * `ratio` is a rainy day of this weekday against a dry one; `chance` is
+   * how likely rain is (1 for a day that has already rained); `relative` is
+   * a rainy day against the TYPICAL day the plan is built from -- the factor
+   * the production rule thins each item's demand by (model.ts).
+   */
+  rain?: {
+    ratio: number; chance: number; relative: number; weekday: number;
+    /** At least 90% sure this weekday's effect is not chance (CREDIBLE_Z):
+     *  only then is a cut offered. */
+    credible: boolean;
+  };
 }
 
 /** How far outside the observed range still counts as "seen before". */
@@ -217,6 +423,25 @@ export function adviseFor(
     if (today.tempMax < lo - TEMP_SLACK || today.tempMax > hi + TEMP_SLACK) {
       return { ...base, reason: "out-of-range" };
     }
+  }
+
+  // Rain, by this weekday, weighted by how sure the forecast is. A forecast's
+  // amount is one model's guess; its chance is what it actually knows.
+  const chance = today.forecast && today.rainChance !== undefined
+    ? today.rainChance : (b === "wet" || b === "heavy") ? 1 : 0;
+  if (b !== "snow" && chance > 0 && effect.rain.usable) {
+    const wd = isoWeekday(today.date);
+    const wr = effect.rain.byWeekday[wd - 1];
+    const expected = 1 + chance * (wr.ratio - 1);
+    const endorsed = wr.se > 0 && Math.abs(wr.ratio - 1) >= MIN_T * wr.se;
+    const pct = Math.round((expected - 1) * 1000) / 10;
+    return {
+      ...base, reason: endorsed ? "ok" : "too-noisy", n: wr.n,
+      multiplier: endorsed ? expected : null, pct: endorsed ? pct : null,
+      offered: expected, offeredPct: pct, endorsed,
+      rain: { ratio: wr.ratio, chance, relative: wr.ratio / typicalFor(effect, wd), weekday: wd,
+              credible: wr.se > 0 && Math.abs(wr.ratio - 1) >= CREDIBLE_Z * wr.se },
+    };
   }
 
   if (b === "dry") {
@@ -307,9 +532,21 @@ export function typicalRatio(effect: WeatherEffect): number {
  * against dry and therefore 0% forever, but a couple of percent ABOVE a
  * typical day -- small, and the honest size of the effect.
  */
-export function planFactor(ratioVsDry: number, effect: WeatherEffect): number {
-  const typical = typicalRatio(effect);
+export function planFactor(ratioVsDry: number, effect: WeatherEffect, weekday?: number): number {
+  const typical = weekday !== undefined && effect.rain.usable
+    ? typicalFor(effect, weekday) : typicalRatio(effect);
   return typical > 0 ? ratioVsDry / typical : ratioVsDry;
+}
+
+/**
+ * A typical day of one weekday against a dry one: its rainy share at its own
+ * rain ratio. The plan for a Saturday is built from Saturdays that were wet
+ * about a third of the time, so that is what "normal" already prices in.
+ */
+export function typicalFor(effect: WeatherEffect, weekday: number): number {
+  const wr = effect.rain.byWeekday[weekday - 1];
+  if (!wr || !effect.rain.usable) return typicalRatio(effect);
+  return 1 + wr.rainShare * (wr.ratio - 1);
 }
 
 /**

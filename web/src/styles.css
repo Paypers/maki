@@ -14,6 +14,14 @@
      8. recipe builder
      9-11. calendar, day sheet, weather
      12. the board      Today, the tiles, Make/Count lists, Setup
+     13-15. money, ambition, the plan ahead
+     16. looks          Washi and Bento: what their tokens cannot say alone
+
+   THREE LOOKS, ONE LANGUAGE. <html data-look="washi|bento"> swaps the whole
+   palette, the faces, the corners and the depth; no attribute is Default.
+   Layouts never change between looks, and neither do the meanings below --
+   each look has its own amber, blue, green and red, tuned to its ground.
+   Light and dark (data-theme) work inside every look.
 
    A work tool, not a showcase: dense, everything on screen, every colour
    meaning exactly one thing wherever it appears --
@@ -46,6 +54,44 @@
   font-family: "Manrope";
   src: url("/fonts/manrope-latin.woff2") format("woff2");
   font-weight: 200 800; font-style: normal; font-display: swap;
+}
+/* The looks' faces, Latin subsets, OFL. A browser fetches a face only when a
+   rule uses it, so these cost nothing until their look is chosen; the service
+   worker still caches them so a look can be switched to offline. */
+@font-face {
+  font-family: "Shippori Mincho";
+  src: url("/fonts/shippori-mincho-500-latin.woff2") format("woff2");
+  font-weight: 500; font-style: normal; font-display: swap;
+}
+@font-face {
+  font-family: "Shippori Mincho";
+  src: url("/fonts/shippori-mincho-700-latin.woff2") format("woff2");
+  font-weight: 600 700; font-style: normal; font-display: swap;
+}
+@font-face {
+  font-family: "Shippori Mincho";
+  src: url("/fonts/shippori-mincho-800-latin.woff2") format("woff2");
+  font-weight: 800; font-style: normal; font-display: swap;
+}
+@font-face {
+  font-family: "Zen Kaku Gothic New";
+  src: url("/fonts/zen-kaku-gothic-new-400-latin.woff2") format("woff2");
+  font-weight: 400; font-style: normal; font-display: swap;
+}
+@font-face {
+  font-family: "Zen Kaku Gothic New";
+  src: url("/fonts/zen-kaku-gothic-new-500-latin.woff2") format("woff2");
+  font-weight: 500 600; font-style: normal; font-display: swap;
+}
+@font-face {
+  font-family: "Zen Kaku Gothic New";
+  src: url("/fonts/zen-kaku-gothic-new-700-latin.woff2") format("woff2");
+  font-weight: 700 800; font-style: normal; font-display: swap;
+}
+@font-face {
+  font-family: "Sora";
+  src: url("/fonts/sora-latin.woff2") format("woff2");
+  font-weight: 300 800; font-style: normal; font-display: swap;
 }
 
 /* ---- 2. tokens -------------------------------------------------------- */
@@ -93,6 +139,8 @@
 
   --font-display: "Space Grotesk", "Manrope", system-ui, sans-serif;
   --font-body: "Manrope", system-ui, -apple-system, "Segoe UI", sans-serif;
+  /* Small tracked labels: eyebrows, column heads, the tab bar. */
+  --font-label: var(--font-display);
 
   --t-hero: 46px;
   --t-title: 30px;
@@ -108,6 +156,9 @@
   --r-sm: 6px; --r-md: 8px; --r-lg: 12px; --r-full: 999px;
   --tap: 44px;
   --card-border: var(--line);
+  /* Depth and texture, which only the looks use. */
+  --card-shadow: none;
+  --bg-image: none;
 }
 
 /* Daylight. Same language, light ground. */
@@ -178,6 +229,256 @@
   --critical-soft: #f9e3e3;
 }
 
+/* ---- 2b. looks: Washi and Bento --------------------------------------- */
+/* Same order as Default above -- dark base, then the light copy under the
+   phone's preference, then the light copy on request -- and the SAME token
+   names, every one of them (theme.test.ts checks both, and each pair of text
+   and ground against 4.5:1). Values tuned per look, meanings never moved:
+   amber-gold is owed, blue is the rule, green is saved, red is late.
+
+   WASHI. Paper and ink: a warm fibred ground, sumi ink for text and for every
+   edge, Shippori Mincho for titles and numbers, square corners. Yamabuki gold
+   for what is owed, ai indigo for the rule, a jade green, shu red for late.
+   Dark is sumi: the same ink as the ground, the paper as the text. */
+:root[data-look="washi"] {
+  --font-display: "Shippori Mincho", "Hiragino Mincho ProN", "Yu Mincho", Georgia, serif;
+  --font-body: "Zen Kaku Gothic New", "Hiragino Sans", system-ui, -apple-system, sans-serif;
+  --font-label: var(--font-body);
+  --r-sm: 2px; --r-md: 2px; --r-lg: 3px;
+  --card-border: var(--line);
+
+  color-scheme: dark;
+  --bg: #15130f;
+  --surface-1: #1e1b16;
+  --surface-2: #28241d;
+  --surface-3: #332e25;
+  --line: #4d4538;
+  --line-soft: #2a261f;
+  --text-primary: #efe8da;
+  --text-secondary: #b1a792;
+  --text-muted: #b1a792;
+  --text-dim: #6c6455;
+  --accent: #e0a83e;
+  --accent-ink: #e6b65a;
+  --on-accent: #15130f;
+  --accent-soft: rgba(224, 168, 62, 0.14);
+  --series-1: #d2c7b0;
+  --good: #6aad86;
+  --critical: #e4705a;
+  --warning: #e0a83e;
+  --spark-dim: #474034;
+  --owed-line: #6b5225;
+  --owed-soft: #2a2214;
+  --rule-ink: #92b4db;
+  --rule-soft: #172029;
+  --rule-line: #3a5676;
+  --good-ink: #98cdab;
+  --good-soft: #15241b;
+  --good-line: #2f5a42;
+  --critical-ink: #f09a86;
+  --critical-soft: #3a1f18;
+  --bg-image:
+    url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='240' height='240'%3E%3Cfilter id='g'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='.85' numOctaves='3' stitchTiles='stitch'/%3E%3CfeColorMatrix values='0 0 0 0 .95 0 0 0 0 .9 0 0 0 0 .8 0 0 0 .05 0'/%3E%3C/filter%3E%3Crect width='240' height='240' filter='url(%23g)'/%3E%3C/svg%3E"),
+    url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='480' height='480'%3E%3Cfilter id='f'%3E%3CfeTurbulence type='turbulence' baseFrequency='.004 .09' numOctaves='2' seed='7' stitchTiles='stitch'/%3E%3CfeColorMatrix values='0 0 0 0 .95 0 0 0 0 .9 0 0 0 0 .8 0 0 0 .03 0'/%3E%3C/filter%3E%3Crect width='480' height='480' filter='url(%23f)'/%3E%3C/svg%3E");
+}
+@media (prefers-color-scheme: light) {
+  :root[data-look="washi"]:where(:not([data-theme="dark"])) {
+    color-scheme: light;
+    --bg: #f2ede3;
+    --surface-1: #fbf8f2;
+    --surface-2: #ebe4d6;
+    --surface-3: #ddd3c0;
+    --line: #5a5044;
+    --line-soft: #ddd4c4;
+    --text-primary: #1c1a16;
+    --text-secondary: #5e5648;
+    --text-muted: #5e5648;
+    --text-dim: #a2988a;
+    --accent: #e2a72e;
+    --accent-ink: #87570a;
+    --on-accent: #1c1a16;
+    --accent-soft: rgba(135, 87, 10, 0.10);
+    --series-1: #5e5648;
+    --good: #3a7f58;
+    --critical: #b7321f;
+    --warning: #87570a;
+    --spark-dim: #c9bfac;
+    --owed-line: #d4ae62;
+    --owed-soft: #f6ead2;
+    --rule-ink: #1d4b7a;
+    --rule-soft: #e3ebf4;
+    --rule-line: #a2b9d3;
+    --good-ink: #2c6a47;
+    --good-soft: #e2efe6;
+    --good-line: #a9cdb6;
+    --critical-ink: #a02e1c;
+    --critical-soft: #f5e0da;
+    --bg-image:
+      url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='240' height='240'%3E%3Cfilter id='g'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='.85' numOctaves='3' stitchTiles='stitch'/%3E%3CfeColorMatrix values='0 0 0 0 .36 0 0 0 0 .29 0 0 0 0 .2 0 0 0 .08 0'/%3E%3C/filter%3E%3Crect width='240' height='240' filter='url(%23g)'/%3E%3C/svg%3E"),
+      url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='480' height='480'%3E%3Cfilter id='f'%3E%3CfeTurbulence type='turbulence' baseFrequency='.004 .09' numOctaves='2' seed='7' stitchTiles='stitch'/%3E%3CfeColorMatrix values='0 0 0 0 .42 0 0 0 0 .35 0 0 0 0 .25 0 0 0 .05 0'/%3E%3C/filter%3E%3Crect width='480' height='480' filter='url(%23f)'/%3E%3C/svg%3E");
+  }
+}
+:root[data-look="washi"][data-theme="light"] {
+  color-scheme: light;
+  --bg: #f2ede3;
+  --surface-1: #fbf8f2;
+  --surface-2: #ebe4d6;
+  --surface-3: #ddd3c0;
+  --line: #5a5044;
+  --line-soft: #ddd4c4;
+  --text-primary: #1c1a16;
+  --text-secondary: #5e5648;
+  --text-muted: #5e5648;
+  --text-dim: #a2988a;
+  --accent: #e2a72e;
+  --accent-ink: #87570a;
+  --on-accent: #1c1a16;
+  --accent-soft: rgba(135, 87, 10, 0.10);
+  --series-1: #5e5648;
+  --good: #3a7f58;
+  --critical: #b7321f;
+  --warning: #87570a;
+  --spark-dim: #c9bfac;
+  --owed-line: #d4ae62;
+  --owed-soft: #f6ead2;
+  --rule-ink: #1d4b7a;
+  --rule-soft: #e3ebf4;
+  --rule-line: #a2b9d3;
+  --good-ink: #2c6a47;
+  --good-soft: #e2efe6;
+  --good-line: #a9cdb6;
+  --critical-ink: #a02e1c;
+  --critical-soft: #f5e0da;
+  --bg-image:
+    url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='240' height='240'%3E%3Cfilter id='g'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='.85' numOctaves='3' stitchTiles='stitch'/%3E%3CfeColorMatrix values='0 0 0 0 .36 0 0 0 0 .29 0 0 0 0 .2 0 0 0 .08 0'/%3E%3C/filter%3E%3Crect width='240' height='240' filter='url(%23g)'/%3E%3C/svg%3E"),
+    url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='480' height='480'%3E%3Cfilter id='f'%3E%3CfeTurbulence type='turbulence' baseFrequency='.004 .09' numOctaves='2' seed='7' stitchTiles='stitch'/%3E%3CfeColorMatrix values='0 0 0 0 .42 0 0 0 0 .35 0 0 0 0 .25 0 0 0 .05 0'/%3E%3C/filter%3E%3Crect width='480' height='480' filter='url(%23f)'/%3E%3C/svg%3E");
+}
+
+/* BENTO. Soft tiles: a warm ground, white cards lifted by shadow instead of
+   drawn with lines, generous corners, Sora for titles and numbers, and one
+   dark nori card -- the week -- plus a nori tab bar. Honey-apricot for what
+   is owed, blueberry for the rule, avocado green, raspberry red for late. */
+:root[data-look="bento"] {
+  --font-display: "Sora", "Manrope", system-ui, sans-serif;
+  --font-label: var(--font-display);
+  --r-sm: 10px; --r-md: 14px; --r-lg: 22px;
+
+  color-scheme: dark;
+  --bg: #121714;
+  --surface-1: #1c231f;
+  --surface-2: #262e29;
+  --surface-3: #303a34;
+  --line: #2b342e;
+  --line-soft: #222a25;
+  --text-primary: #f0ece3;
+  --text-secondary: #a5afa7;
+  --text-muted: #a5afa7;
+  --text-dim: #5b655e;
+  --accent: #f5a855;
+  --accent-ink: #f7bd7a;
+  --on-accent: #24150c;
+  --accent-soft: rgba(245, 168, 85, 0.14);
+  --series-1: #c9d2c8;
+  --good: #86c065;
+  --critical: #e8638f;
+  --warning: #f5a855;
+  --spark-dim: #38423c;
+  --owed-line: #7a5230;
+  --owed-soft: #2c2019;
+  --rule-ink: #9dbbe8;
+  --rule-soft: #172029;
+  --rule-line: #3d5a80;
+  --good-ink: #a8d58c;
+  --good-soft: #182618;
+  --good-line: #3b5e2e;
+  --critical-ink: #f59ab4;
+  --critical-soft: #3a1c23;
+  --card-border: #2b342e;
+  --card-shadow: none;
+  --bar-bg: #0c100e;
+  --bar-ink: #a5afa7;
+  --bar-active-bg: #2b3a31;
+  --bar-active-ink: #f0ece3;
+}
+@media (prefers-color-scheme: light) {
+  :root[data-look="bento"]:where(:not([data-theme="dark"])) {
+    color-scheme: light;
+    --bg: #eeeae3;
+    --surface-1: #ffffff;
+    --surface-2: #f2eee7;
+    --surface-3: #e5dfd4;
+    --line: #e2dcd1;
+    --line-soft: #eee9e1;
+    --text-primary: #1d2621;
+    --text-secondary: #5b665f;
+    --text-muted: #5b665f;
+    --text-dim: #a3aaa3;
+    --accent: #f5a855;
+    --accent-ink: #96500d;
+    --on-accent: #24150c;
+    --accent-soft: rgba(150, 80, 13, 0.10);
+    --series-1: #5b665f;
+    --good: #4a7d2e;
+    --critical: #b3263c;
+    --warning: #96500d;
+    --spark-dim: #d0d6cd;
+    --owed-line: #efbd84;
+    --owed-soft: #fdeee4;
+    --rule-ink: #2d5a98;
+    --rule-soft: #e6eef9;
+    --rule-line: #a8c1e4;
+    --good-ink: #3c6a22;
+    --good-soft: #e5f0da;
+    --good-line: #b1cf95;
+    --critical-ink: #a5223a;
+    --critical-soft: #f8e0e4;
+    --card-border: transparent;
+    --card-shadow: 0 1px 2px rgba(31, 42, 36, 0.06), 0 8px 22px rgba(31, 42, 36, 0.07);
+    --bar-bg: #1f2a24;
+    --bar-ink: #cdd6cd;
+    --bar-active-bg: #f4efe6;
+    --bar-active-ink: #1f2a24;
+  }
+}
+:root[data-look="bento"][data-theme="light"] {
+  color-scheme: light;
+  --bg: #eeeae3;
+  --surface-1: #ffffff;
+  --surface-2: #f2eee7;
+  --surface-3: #e5dfd4;
+  --line: #e2dcd1;
+  --line-soft: #eee9e1;
+  --text-primary: #1d2621;
+  --text-secondary: #5b665f;
+  --text-muted: #5b665f;
+  --text-dim: #a3aaa3;
+  --accent: #f5a855;
+  --accent-ink: #96500d;
+  --on-accent: #24150c;
+  --accent-soft: rgba(150, 80, 13, 0.10);
+  --series-1: #5b665f;
+  --good: #4a7d2e;
+  --critical: #b3263c;
+  --warning: #96500d;
+  --spark-dim: #d0d6cd;
+  --owed-line: #efbd84;
+  --owed-soft: #fdeee4;
+  --rule-ink: #2d5a98;
+  --rule-soft: #e6eef9;
+  --rule-line: #a8c1e4;
+  --good-ink: #3c6a22;
+  --good-soft: #e5f0da;
+  --good-line: #b1cf95;
+  --critical-ink: #a5223a;
+  --critical-soft: #f8e0e4;
+  --card-border: transparent;
+  --card-shadow: 0 1px 2px rgba(31, 42, 36, 0.06), 0 8px 22px rgba(31, 42, 36, 0.07);
+  --bar-bg: #1f2a24;
+  --bar-ink: #cdd6cd;
+  --bar-active-bg: #f4efe6;
+  --bar-active-ink: #1f2a24;
+}
+
 /* ---- 3. base ---------------------------------------------------------- */
 
 * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
@@ -185,6 +486,7 @@
 body {
   margin: 0;
   background: var(--bg);
+  background-image: var(--bg-image);
   color: var(--text-primary);
   font: var(--t-body)/1.4 var(--font-body);
   -webkit-font-smoothing: antialiased;
@@ -207,7 +509,7 @@ body {
    line under it can say what it says without a colon. Used above every screen
    title and every card. */
 .eyebrow {
-  font-family: var(--font-display); font-size: var(--t-eyebrow); font-weight: 500;
+  font-family: var(--font-label); font-size: var(--t-eyebrow); font-weight: 500;
   letter-spacing: 0.16em; text-transform: uppercase; color: var(--text-secondary);
   line-height: 1.2;
 }
@@ -229,7 +531,7 @@ header.bar h1 {
 /* The subtitle renders ABOVE the title as its eyebrow. In the markup it stays
    after the title so screen readers announce the screen name first. */
 header.bar .sub {
-  font-family: var(--font-display); font-size: var(--t-eyebrow); font-weight: 500;
+  font-family: var(--font-label); font-size: var(--t-eyebrow); font-weight: 500;
   letter-spacing: 0.16em; text-transform: uppercase; color: var(--text-secondary);
   line-height: 1.2;
 }
@@ -376,7 +678,7 @@ button.small.wants {
 
 .field { display: block; margin: var(--s3) 0; }
 .field > span {
-  display: block; font-family: var(--font-display); font-size: var(--t-xs);
+  display: block; font-family: var(--font-label); font-size: var(--t-xs);
   font-weight: 500; letter-spacing: 0.12em; text-transform: uppercase;
   color: var(--text-secondary); margin-bottom: var(--s2);
 }
@@ -412,7 +714,7 @@ button.small.wants {
 
 .pill {
   display: inline-flex; align-items: center; gap: 6px;
-  font-family: var(--font-display); font-size: var(--t-xs); font-weight: 500;
+  font-family: var(--font-label); font-size: var(--t-xs); font-weight: 500;
   letter-spacing: 0.08em; text-transform: uppercase; color: var(--text-secondary);
   white-space: nowrap; padding: var(--s1) 0;
 }
@@ -432,7 +734,7 @@ button.small.wants {
 .cols {
   display: grid; align-items: end; column-gap: var(--s2);
   padding: var(--s2) var(--s1) 6px; border-bottom: 1px solid var(--line);
-  font-family: var(--font-display); font-size: var(--t-xs); font-weight: 500;
+  font-family: var(--font-label); font-size: var(--t-xs); font-weight: 500;
   letter-spacing: 0.12em; text-transform: uppercase; color: var(--text-secondary);
 }
 .cols > .r { text-align: right; }
@@ -542,10 +844,10 @@ button.small.wants {
    result of what is being edited below them. */
 .stats.boxed .stat {
   background: var(--surface-1); border: 1px solid var(--line);
-  border-radius: 10px; padding: var(--s3) 14px;
+  border-radius: calc(var(--r-md) + 2px); padding: var(--s3) 14px;
 }
 .stats.boxed .stat .label {
-  font-family: var(--font-display); font-size: var(--t-xs); letter-spacing: 0.12em;
+  font-family: var(--font-label); font-size: var(--t-xs); letter-spacing: 0.12em;
   text-transform: uppercase;
 }
 .stats.boxed .stat .value { font-size: 22px; letter-spacing: -0.03em; }
@@ -597,7 +899,7 @@ table.grid th, table.grid td {
   border-bottom: 1px solid var(--line-soft);
 }
 table.grid th {
-  font-family: var(--font-display); font-size: var(--t-xs); font-weight: 500;
+  font-family: var(--font-label); font-size: var(--t-xs); font-weight: 500;
   letter-spacing: 0.1em; text-transform: uppercase; color: var(--text-secondary);
   position: sticky; top: 0; background: var(--surface-1);
 }
@@ -661,7 +963,7 @@ table.grid tr:last-child td { border-bottom: 0; }
 .footer .tally .value { font-family: var(--font-display); font-size: 28px; font-weight: 700;
                         letter-spacing: -0.03em; line-height: 1; font-variant-numeric: tabular-nums; }
 .footer .tally .value span { color: var(--text-dim); font-weight: 500; }
-.footer .tally .label { font-family: var(--font-display); font-size: 11px; font-weight: 500;
+.footer .tally .label { font-family: var(--font-label); font-size: 11px; font-weight: 500;
                         letter-spacing: 0.06em; text-transform: uppercase;
                         color: var(--text-secondary); margin-top: 2px; }
 
@@ -676,7 +978,7 @@ table.grid tr:last-child td { border-bottom: 0; }
   border: 0; background: none; border-radius: 0; min-height: 68px;
   display: flex; flex-direction: column; align-items: center; justify-content: center;
   gap: 4px; padding: 0; position: relative;
-  font-family: var(--font-display); font-size: var(--t-xs); font-weight: 500;
+  font-family: var(--font-label); font-size: var(--t-xs); font-weight: 500;
   letter-spacing: 0.06em; text-transform: uppercase; color: var(--text-secondary);
 }
 .tabbar button:active { background: transparent; }
@@ -796,7 +1098,7 @@ button.primary.rest:active { background: var(--accent-soft); }
 .cal { margin: var(--s3) 0; }
 .cal-wd { display: grid; grid-template-columns: repeat(7, minmax(0, 1fr));
           gap: 4px; margin-bottom: 6px; }
-.cal-wd span { text-align: center; font-family: var(--font-display);
+.cal-wd span { text-align: center; font-family: var(--font-label);
                font-size: var(--t-xs); font-weight: 500; letter-spacing: 0.1em;
                color: var(--text-secondary); }
 .cal-grid { display: grid; grid-template-columns: repeat(7, minmax(0, 1fr)); gap: 4px; }
@@ -1082,7 +1384,7 @@ a.button.primary { background: var(--accent); color: var(--on-accent); }
 .totals > div { display: flex; flex-direction: column; gap: 4px; padding: 10px var(--s3); min-width: 0; }
 .totals > div + div { border-left: 1px solid var(--line); }
 .totals .k {
-  font-family: var(--font-display); font-size: 10.5px; font-weight: 700;
+  font-family: var(--font-label); font-size: 10.5px; font-weight: 700;
   letter-spacing: 0.1em; text-transform: uppercase; color: var(--text-secondary);
 }
 .totals .v { font-size: 28px; font-weight: 700; line-height: 1; }
@@ -1094,7 +1396,7 @@ a.button.primary { background: var(--accent); color: var(--on-accent); }
 .quick { display: flex; gap: var(--s2); margin: var(--s2) 0 var(--s3); }
 .quick button {
   flex: 1; min-height: 44px; padding: 0 6px; font-size: 13px; font-weight: 700;
-  border-radius: 10px; background: var(--surface-1); border: 1px solid var(--line);
+  border-radius: calc(var(--r-md) + 2px); background: var(--surface-1); border: 1px solid var(--line);
   color: var(--text-primary);
 }
 .quick button.rule { background: var(--rule-soft); border-color: var(--rule-line); color: var(--rule-ink); }
@@ -1145,7 +1447,7 @@ a.button.primary { background: var(--accent); color: var(--on-accent); }
 }
 .daypick button {
   display: flex; flex-direction: column; align-items: flex-start; justify-content: center; gap: 2px;
-  min-height: 52px; padding: 0 10px; text-align: left; border-radius: 10px;
+  min-height: 52px; padding: 0 10px; text-align: left; border-radius: calc(var(--r-md) + 2px);
   background: var(--surface-1); border: 1px solid var(--line); font-family: var(--font-body);
 }
 .daypick button strong { font-size: 13.5px; font-weight: 700; color: var(--text-primary); }
@@ -1231,7 +1533,7 @@ body.has-tabbar .footer { bottom: 64px; }
   display: grid; grid-template-columns: minmax(0, 1fr) 76px 58px; column-gap: var(--s2);
 }
 .ledger-head {
-  font-family: var(--font-display); font-size: 10.5px; font-weight: 700;
+  font-family: var(--font-label); font-size: 10.5px; font-weight: 700;
   letter-spacing: 0.08em; text-transform: uppercase; color: var(--text-secondary);
   padding-bottom: 6px; border-bottom: 1px solid var(--line);
 }
@@ -1295,7 +1597,7 @@ p.hint.money-note { font-size: 11.5px; color: var(--text-secondary);
   display: grid; grid-template-columns: minmax(0, 1.25fr) repeat(3, minmax(0, 1fr));
   column-gap: 6px; align-items: baseline;
 }
-.weeks-head { font-family: var(--font-display); font-size: 10px; font-weight: 700;
+.weeks-head { font-family: var(--font-label); font-size: 10px; font-weight: 700;
               letter-spacing: 0.06em; text-transform: uppercase; color: var(--text-secondary);
               padding: 6px 0; border-bottom: 1px solid var(--line); }
 .weeks-row { padding: 9px 0; border-bottom: 1px solid var(--line-soft); font-size: 13px; }
@@ -1327,6 +1629,23 @@ p.hint.money-note { font-size: 11.5px; color: var(--text-secondary);
 .hint-inline.amb-extra { display: block; margin-top: 6px; }
 .ambition-levels button { font-size: 12.5px; padding: 0 2px; white-space: nowrap; }
 .card p.hint.ambition-says { margin-top: var(--s2); color: var(--text-primary); }
+
+/* ---- weather: rain by weekday, and the Weather Service's alerts ---- */
+.wx-weekdays { display: grid; grid-template-columns: repeat(7, minmax(0, 1fr)); gap: 4px; margin-top: var(--s2); }
+.wx-wd { display: flex; flex-direction: column; align-items: center; gap: 1px; padding: 6px 0;
+         background: var(--surface-2); border-radius: var(--r-sm); }
+.wx-wd .k { font-family: var(--font-label); font-size: 10.5px; font-weight: 700; color: var(--text-secondary); }
+.wx-wd .v { font-size: 14px; font-weight: 600; color: var(--text-secondary); }
+.wx-wd.t-solid .v { font-weight: 800; color: var(--text-primary); }
+.wx-wd .n { font-size: 9.5px; color: var(--text-secondary); white-space: nowrap; }
+.banner.wx-alert { border-color: var(--critical); background: var(--critical-soft); color: var(--text-primary); }
+.banner.wx-alert p { margin: 4px 0 0; color: var(--text-secondary); font-size: 12.5px; }
+
+.banner.sheet-wx { margin: var(--s3) 0 var(--s4); color: var(--text-primary); }
+.banner.sheet-wx .ico { color: var(--rule-ink); }
+.banner.sheet-wx.soft { color: var(--text-secondary); }
+.week-day .wv.rain { color: var(--rule-ink); font-weight: 700; }
+.hint-inline.ahead-rain { display: block; margin-top: var(--s2); line-height: 1.45; }
 
 /* ---- 15. the plan ahead ------------------------------------------------ */
 /* Every number here is the rule's estimate for a day that has not happened:
@@ -1378,7 +1697,7 @@ p.hint.money-note { font-size: 11.5px; color: var(--text-secondary);
 }
 .plan-week-head {
   margin: 4px 0 6px; padding: 4px 0; border-radius: var(--r-sm, 4px); background: var(--surface-2);
-  font-family: var(--font-display); font-size: 10.5px; font-weight: 700;
+  font-family: var(--font-label); font-size: 10.5px; font-weight: 700;
   color: var(--text-secondary); letter-spacing: 0.02em;
 }
 .plan-week-row { padding: 7px 0 6px; border-bottom: 1px solid var(--line-soft); }
@@ -1398,3 +1717,122 @@ p.hint.money-note { font-size: 11.5px; color: var(--text-secondary);
 /* Calendar, "Made": the estimated plan on days ahead. */
 .cal-day .v.plan, .cal-key .kv.plan { color: var(--rule-ink); font-style: italic; font-weight: 600; }
 .cal-metric button { flex: 1 1 auto; font-size: 12.5px; padding: 0 3px; }
+
+/* ---- 16. looks: what the tokens cannot say alone ----------------------- */
+/* Every selector here is prefixed with :where(...), which adds nothing to its
+   specificity: each rule weighs exactly what the rule it restyles weighs, and
+   wins only by coming last. So a more specific state -- a selected tab, a drop
+   target, the rule's blue button -- still beats a look, as it should. */
+
+/* The dark card: This week on Today, the one figure the screen is about. Its
+   tokens are redeclared on the card, so everything inside it -- the meter,
+   the receipt, every label -- re-inks itself without a rule of its own. */
+:where(:root[data-look="washi"]) .card.period.hero {
+  --surface-1: #1e1b16; --surface-2: #2b2720; --surface-3: #37322a;
+  --line: #3d372d; --line-soft: #2b2720; --card-border: #1e1b16;
+  --text-primary: #f3eee3; --text-secondary: #bdb4a2; --text-muted: #bdb4a2;
+  --text-dim: #6f6858; --series-1: #f3eee3; --spark-dim: #4a4438;
+  --accent-ink: #e6b65a; --rule-ink: #9dbbe0; --good-ink: #98cdab;
+  --critical-ink: #f39b87;
+  color-scheme: dark; color: var(--text-primary);
+}
+:where(:root[data-look="bento"]) .card.period.hero {
+  --surface-1: #1f2a24; --surface-2: #2a3730; --surface-3: #34433a;
+  --line: #34433a; --line-soft: #2a3730; --card-border: transparent;
+  --text-primary: #f4efe6; --text-secondary: #b8c3b9; --text-muted: #b8c3b9;
+  --text-dim: #6d7b71; --series-1: #f4efe6; --spark-dim: #3e4d44;
+  --accent-ink: #f7bd7a; --rule-ink: #a9c4ef; --good-ink: #a9d68a;
+  --critical-ink: #f5a3b0;
+  --card-shadow: 0 2px 4px rgba(20, 28, 24, 0.10), 0 14px 32px rgba(20, 28, 24, 0.18);
+  color-scheme: dark; color: var(--text-primary);
+}
+
+/* ---- Washi ---- */
+/* Titles and numbers are Mincho; everything you press or read in a label is
+   the gothic, which holds up at 11px where a hairline serif does not. Mincho
+   has no tabular figures: its digits differ by about 1px at list sizes
+   (measured), so columns still scan. */
+:where(:root[data-look="washi"]) button { font-family: var(--font-body); font-weight: 700; letter-spacing: 0.01em; }
+:where(:root[data-look="washi"]) header.bar h1 { font-weight: 800; letter-spacing: -0.01em; }
+:where(:root[data-look="washi"]) h2 { font-weight: 700; letter-spacing: 0; }
+:where(:root[data-look="washi"]) .stat .value { letter-spacing: -0.02em; }
+:where(:root[data-look="washi"]) .eyebrow,
+:where(:root[data-look="washi"]) header.bar .sub { letter-spacing: 0.14em; }
+/* A selected segment is inked in, like a filled box on a printed form. */
+:where(:root[data-look="washi"]) .tabs button[aria-pressed="true"] {
+  background: var(--text-primary); color: var(--surface-1);
+}
+/* The tab bar: a ruled strip of paper; the page you are on is ink, marked
+   with a bar of gold along the top edge. */
+:where(:root[data-look="washi"]) .tabbar { background: var(--surface-1); }
+:where(:root[data-look="washi"]) .tabbar button[aria-current="page"] { color: var(--text-primary); font-weight: 700; }
+:where(:root[data-look="washi"]) .tabbar button[aria-current="page"]::after {
+  content: ""; position: absolute; top: 0; left: 28%; right: 28%; height: 3px;
+  background: var(--accent);
+}
+/* The save chip is a stamp here, not a pill. */
+:where(:root[data-look="washi"]) .savechip { border-radius: var(--r-sm); }
+
+/* ---- Bento ---- */
+/* Cards are lifted, not drawn: no edge, a soft shadow. States that draw an
+   edge on purpose (owed, a drop target, the selected day) keep theirs. */
+:where(:root[data-look="bento"]) .card,
+:where(:root[data-look="bento"]) .waiting { box-shadow: var(--card-shadow); }
+:where(:root[data-look="bento"]) .tile,
+:where(:root[data-look="bento"]) .qgroup,
+:where(:root[data-look="bento"]) .setlist,
+:where(:root[data-look="bento"]) .totals,
+:where(:root[data-look="bento"]) .wx-today,
+:where(:root[data-look="bento"]) .daypick button,
+:where(:root[data-look="bento"]) .quick button {
+  border-color: var(--card-border); box-shadow: var(--card-shadow);
+}
+/* What you owe sits on the owed tint, as its own tile. */
+:where(:root[data-look="bento"]) .waiting:not(.done) { background: var(--owed-soft); }
+:where(:root[data-look="bento"]) header.bar h1 { font-weight: 800; letter-spacing: -0.035em; }
+/* Sora runs wide: the tracking comes in so a card's label stays on one line. */
+:where(:root[data-look="bento"]) .eyebrow,
+:where(:root[data-look="bento"]) header.bar .sub { letter-spacing: 0.08em; }
+:where(:root[data-look="bento"]) .week-card .eyebrow,
+:where(:root[data-look="bento"]) .waiting-head .eyebrow { letter-spacing: 0.05em; }
+/* Segmented control: a recessed track with a white chip that lifts. */
+:where(:root[data-look="bento"]) .tabs { background: var(--surface-2); border-color: transparent; }
+:where(:root[data-look="bento"]) .tabs button[aria-pressed="true"] {
+  background: var(--surface-1); box-shadow: 0 1px 3px rgba(20, 28, 24, 0.14);
+}
+/* The tab bar: nori, rounded at the top, the page you are on a pale chip.
+   Same 64px as every look, so nothing above it moves. */
+:where(:root[data-look="bento"]) .tabbar {
+  background: var(--bar-bg); border-top: 0; border-radius: 22px 22px 0 0;
+  padding: 6px 8px calc(6px + env(safe-area-inset-bottom)); gap: 4px;
+}
+:where(:root[data-look="bento"]) .tabbar button { min-height: 52px; border-radius: 16px; color: var(--bar-ink); }
+:where(:root[data-look="bento"]) .tabbar button[aria-current="page"] {
+  background: var(--bar-active-bg); color: var(--bar-active-ink); font-weight: 700;
+}
+:where(:root[data-look="bento"]) .tabbar .badge { box-shadow: 0 0 0 2px var(--bar-bg); top: 6px; }
+
+/* ---- the theme picker in Settings ---- */
+/* Each look previews itself in its own colours whatever look is on, so these
+   swatches take inline colours from lib/theme.ts rather than tokens. */
+.looks { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: var(--s2); margin: var(--s3) 0 var(--s2); }
+.look-pick {
+  display: flex; flex-direction: column; align-items: stretch; gap: 6px;
+  min-height: 0; padding: 6px 6px 8px; border-radius: var(--r-lg);
+  background: var(--surface-1); border: 1px solid var(--line);
+}
+.look-pick[aria-pressed="true"] { border-color: var(--text-primary); box-shadow: inset 0 0 0 1px var(--text-primary); }
+.look-name { display: flex; align-items: center; justify-content: center; gap: 5px;
+             font-size: 13px; font-weight: 700; color: var(--text-primary); }
+.look-name .ico { color: var(--text-primary); }
+.look-preview {
+  display: flex; flex-direction: column; gap: 5px; padding: 8px; height: 86px;
+  border-radius: 6px; border: 1px solid transparent; overflow: hidden;
+}
+.lp-card { display: flex; flex-direction: column; gap: 5px; padding: 7px 8px; border: 1px solid transparent; }
+.lp-num { font-size: 22px; font-weight: 700; line-height: 1; letter-spacing: -0.02em; }
+.lp-row { display: flex; gap: 4px; }
+.lp-row i { display: block; height: 7px; flex: 1; border-radius: 2px; }
+.lp-line { display: block; height: 4px; width: 70%; border-radius: 2px; opacity: 0.6; }
+.card p.hint.look-says { margin: 0 0 var(--s4); color: var(--text-primary); }
+.card h3.subhead { margin: var(--s3) 0 0; font-family: var(--font-display); font-size: 14px; font-weight: 700; }

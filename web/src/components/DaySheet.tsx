@@ -32,6 +32,11 @@ import { itemMoney, share, usd } from "../lib/money";
 import { Icon } from "./Icon";
 import { Ledger } from "./Money";
 import type { DayPlan, Drift } from "../lib/plan";
+import type { DayWeather } from "../lib/weather";
+import { describe as describeWeather } from "../lib/weather";
+import type { WeatherEffect } from "../lib/weatherEffect";
+import { adviseFor, planFactor } from "../lib/weatherEffect";
+import { isoWeekday } from "../lib/businessDay";
 import { PLAN_DAYS } from "../lib/plan";
 import { PlanLines, PlanNotice, PlanStats } from "./Plan";
 
@@ -48,6 +53,9 @@ interface Props {
   plan: DayPlan | null;
   drift: (Drift | null)[];
   suggestions: boolean;
+  /** The forecast for this day, when it is one of the next few. */
+  forecast?: DayWeather;
+  weatherEffect: WeatherEffect | null;
   onOpenPlan: (date: BizDate) => void;
   onClose: () => void;
   onCountWaste: (date: BizDate) => void;
@@ -65,7 +73,7 @@ function relative(date: BizDate, today: BizDate): string {
 
 export function DaySheet({
   day, today, items, entries, econ, estimate, plan, drift, suggestions,
-  onOpenPlan, onClose, onCountWaste, onEditProduction,
+  forecast, weatherEffect, onOpenPlan, onClose, onCountWaste, onEditProduction,
 }: Props) {
   const closeRef = useRef<HTMLButtonElement>(null);
 
@@ -99,6 +107,15 @@ export function DaySheet({
 
   const rate = wasteRate(day);
   const isFuture = day.phase === "future";
+
+  // The forecast, for a day not yet traded: what rain would do to this
+  // weekday, weighted by the forecast's chance of it, against the typical
+  // day the projection above is built from.
+  const wxAdvice = forecast?.forecast && weatherEffect && day.date >= today
+    ? adviseFor(forecast, weatherEffect) : null;
+  const rain = wxAdvice?.rain ?? null;
+  const wxFactor = rain && wxAdvice?.offered != null && weatherEffect
+    ? planFactor(wxAdvice.offered, weatherEffect, isoWeekday(day.date)) : 1;
 
   return (
     <div className="sheet-wrap" role="dialog" aria-modal="true"
@@ -141,6 +158,34 @@ export function DaySheet({
                 <div className="label">thrown away</div>
                 <div className="value">~{usd(estimate.mean.wasteCost)}</div>
               </div>
+            </div>
+          </div>
+        )}
+
+        {rain && (
+          <div className={`banner sheet-wx${rain.relative < 1 && rain.credible ? "" : " soft"}`}>
+            <Icon name="rain" size={16} className="ico" />
+            <div>
+              <strong>Rain {Math.round(rain.chance * 100)}% likely</strong>
+              {forecast ? ` · ${describeWeather(forecast)}` : ""}.{" "}
+              {rain.relative < 1 && rain.credible ? (
+                <>
+                  Rainy {weekdayName(day.date)}s here have sold about{" "}
+                  <strong>{Math.round((1 - rain.ratio) * 100)}% less</strong>
+                  {wxAdvice && !wxAdvice.endorsed ? " (about 90% sure it isn't chance)" : ""}.
+                  {showEstimate && estimate && (
+                    <> With this chance of it: sales ~{usd(estimate.mean.sales * wxFactor)}{" "}
+                      instead of ~{usd(estimate.mean.sales)}.</>
+                  )}
+                  {plan?.rain && (
+                    <> Read into the rule: make ~{plan.rain.total} instead of ~{plan.total} —
+                      Make offers it on the day.</>
+                  )}
+                </>
+              ) : (
+                <>Rain hasn't clearly changed {weekdayName(day.date)}s here, so nothing
+                  changes.</>
+              )}
             </div>
           </div>
         )}
